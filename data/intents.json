@@ -1,0 +1,397 @@
+{
+  "intents": [
+    {
+      "intent": "order_drink",
+      "patterns": [
+        "I want {drink}",
+        "I'll have {drink}",
+        "Can I get {drink}",
+        "Order {drink}",
+        "Give me {drink}",
+        "{quantity} {drink}",
+        "I'd like {quantity} {drink}",
+        "Can I have {quantity} {drink}",
+        "Order {quantity} {drink} please",
+        "Make me {drink}",
+        "Pour me {drink}",
+        "I need {drink}",
+        "Get me {drink}",
+        "Serve {drink}",
+        "Add {drink} to my order",
+        "I want to order {drink}",
+        "Could I get {drink}",
+        "May I have {drink}",
+        "I'll take {drink}",
+        "Bring me {drink}"
+      ],
+      "entities": ["drink", "quantity"],
+      "required_entities": ["drink"],
+      "confidence_boost": 0.2
+    },
+    {
+      "intent": "check_inventory",
+      "patterns": [
+        "Do you have {drink}",
+        "Is {drink} available",
+        "Check {drink} stock",
+        "How much {drink} do we have",
+        "What's the stock on {drink}",
+        "Is there any {drink} left",
+        "Check inventory for {drink}",
+        "Do we have {drink} in stock",
+        "Are we out of {drink}",
+        "Stock check {drink}",
+        "Inventory {drink}",
+        "How many {drink} left",
+        "Check if we have {drink}",
+        "Is {drink} in stock",
+        "Do we still have {drink}",
+        "How many {drink} do we have",
+        "What's the stock level of {drink}",
+        "What's the inventory level for {drink}",
+        "How many {drink} are available"
+      ],
+      "entities": ["drink"],
+      "required_entities": ["drink"],
+      "confidence_boost": 0.1
+    },
+    {
+      "intent": "update_inventory",
+      "patterns": [
+        "Update inventory of {drink} to {quantity}",
+        "Set {drink} stock to {quantity}",
+        "Change {drink} inventory to {quantity}",
+        "Update {drink} to {quantity}",
+        "Set inventory of {drink} to {quantity}",
+        "Make {drink} inventory {quantity}",
+        "We now have {quantity} {drink}",
+        "The {drink} count is now {quantity}",
+        "Change the stock of {drink} to {quantity}",
+        "Set the level of {drink} to {quantity}"
+      ],
+      "entities": ["drink", "quantity"],
+      "required_entities": ["drink", "quantity"],
+      "confidence_boost": 0.2
+    },
+    {
+      "intent": "multi_drink_order",
+      "patterns": [
+        "I'll have a {drink1} and a {drink2}",
+        "Give me a {drink1} and a {drink2}",
+        "Add a {drink1} and a {drink2} to my order",
+        "I want a {drink1} and a {drink2}",
+        "Get me a {drink1} and two {drink2}",
+        "Order a {drink1} and a {drink2}",
+        "Can I get a {drink1} and a {drink2}"
+      ],
+      "entities": ["drink1", "drink2", "quantity"],
+      "required_entities": ["drink1", "drink2"],
+      "confidence_boost": 0.2
+    },
+    {
+      "intent": "stop_listening",
+      "patterns": [
+        "Stop listening",
+        "End voice recognition",
+        "Exit continuous mode",
+        "Stop voice commands",
+        "Exit voice mode",
+        "Stop recording",
+        "Shut down",
+        "Go back to wake word mode",
+        "Switch to wake word mode",
+        "Turn off mic"
+      ],
+      "entities": [],
+      "required_entities": [],
+      "confidence_boost": 0.3
+    },
+    {
+      "intent": "view_menu",
+      "patterns": [
+        "Show me the menu",
+        "What drinks do you have",
+        "What's on the menu",
+        "List drinks",
+        "Show drinks",
+        "What can I order",
+        "What's available",
+        "Menu please",
+        "Show me what you have",
+        "What drinks are available",
+        "Display menu",
+        "What's on tap",
+        "Show cocktails",
+        "What beers do you have",
+        "Wine list",
+        "Show me the drink options",
+        "What can you make",
+        "List all drinks",
+        "Show beverage menu"
+      ],
+      "entities": ["category"],
+      "required_entities": [],
+      "confidence_boost": 0.1
+    },
+    {
+      "intent": "complete_order",
+      "patterns": [
+        "That's all",
+        "Complete my order",
+        "Finish order",
+        "I'm done",
+        "That's everything",
+        "Close the order",
+        "Complete order",
+        "Finalize order",
+        "That's it",
+        "Nothing else",
+        "Order complete",
+        "Done ordering",
+        "That's my order",
+        "Finish up",
+        "All done",
+        "Complete",
+        "Checkout",
+        "Ring me up"
+      ],
+      "entities": [],
+      "required_entities": [],
+      "confidence_boost": 0.3
+    },
+    {
+      "intent": "process_order",
+      "patterns": [
+        "Process order",
+        "Send order",
+        "Submit order",
+        "Process this order",
+        "Send this order",
+        "Submit this order",
+        "Process the order",
+        "Send the order",
+        "Submit the order",
+        "Process it",
+        "Send it",
+        "Submit it",
+        "Go ahead and process",
+        "Process that",
+        "Send that order"
+      ],
+      "entities": [],
+      "required_entities": [],
+      "confidence_boost": 0.4
+    },
+    {
+      "intent": "cancel_order",
+      "patterns": [
+        "Cancel my order",
+        "Cancel order",
+        "Never mind",
+        "Forget it",
+        "Cancel that",
+        "I changed my mind",
+        "Don't want anything",
+        "Cancel everything",
+        "Remove all items",
+        "Start over",
+        "Clear order",
+        "Delete order",
+        "I don't want this",
+        "Cancel the whole thing",
+        "Scrap that order"
+      ],
+      "entities": [],
+      "required_entities": [],
+      "confidence_boost": 0.2
+    },
+    {
+      "intent": "modify_order",
+      "patterns": [
+        "Change {drink} to {new_drink}",
+        "Replace {drink} with {new_drink}",
+        "Instead of {drink} make it {new_drink}",
+        "Actually make that {new_drink}",
+        "Change my order",
+        "Modify order",
+        "Update order",
+        "Switch {drink} to {new_drink}",
+        "I want to change {drink}",
+        "Can you change {drink} to {new_drink}",
+        "Make it {new_drink} instead",
+        "Actually I want {new_drink}",
+        "Change that to {new_drink}",
+        "Swap {drink} for {new_drink}"
+      ],
+      "entities": ["drink", "new_drink", "quantity"],
+      "required_entities": ["drink"],
+      "confidence_boost": 0.1
+    },
+    {
+      "intent": "remove_item",
+      "patterns": [
+        "Remove {drink}",
+        "Delete {drink}",
+        "Take off {drink}",
+        "Cancel {drink}",
+        "Don't want {drink}",
+        "Remove {drink} from order",
+        "Take {drink} off the order",
+        "Delete {drink} from order",
+        "I don't want {drink}",
+        "Cancel the {drink}",
+        "Scratch {drink}",
+        "Drop {drink}",
+        "Remove that {drink}",
+        "Take out {drink}"
+      ],
+      "entities": ["drink"],
+      "required_entities": ["drink"],
+      "confidence_boost": 0.1
+    },
+    {
+      "intent": "show_order",
+      "patterns": [
+        "Show my order",
+        "What's in my order",
+        "Display order contents",
+        "What did I order",
+        "Show current order",
+        "What's on the tab",
+        "Read back my order",
+        "Review order",
+        "Order summary",
+        "Check order status",
+        "What do I have",
+        "List my drinks",
+        "Show order",
+        "What's my total",
+        "Order details",
+        "What am I getting",
+        "Confirm order"
+      ],
+      "entities": [],
+      "required_entities": [],
+      "confidence_boost": 0.1
+    },
+    {
+      "intent": "get_price",
+      "patterns": [
+        "How much is {drink}",
+        "What's the price of {drink}",
+        "Cost of {drink}",
+        "Price for {drink}",
+        "How much does {drink} cost",
+        "What does {drink} cost",
+        "Price check {drink}",
+        "How expensive is {drink}",
+        "What's {drink} going for",
+        "Tell me the price of {drink}",
+        "How much for {drink}",
+        "What's the cost of {drink}",
+        "Price of {drink}",
+        "How much would {drink} be"
+      ],
+      "entities": ["drink"],
+      "required_entities": ["drink"],
+      "confidence_boost": 0.1
+    },
+    {
+      "intent": "greeting",
+      "patterns": [
+        "Hello",
+        "Hi",
+        "Hey",
+        "Good morning",
+        "Good evening",
+        "Good afternoon",
+        "What's up",
+        "How are you",
+        "Hey there",
+        "Hi there",
+        "Hello there",
+        "Greetings",
+        "Howdy",
+        "Good day",
+        "Morning",
+        "Evening",
+        "Afternoon"
+      ],
+      "entities": [],
+      "required_entities": [],
+      "confidence_boost": 0.1
+    },
+    {
+      "intent": "help",
+      "patterns": [
+        "Help",
+        "What can you do",
+        "How does this work",
+        "I need help",
+        "Can you help me",
+        "What are my options",
+        "How do I order",
+        "Instructions",
+        "Guide me",
+        "What can I say",
+        "Help me order",
+        "How to use this",
+        "What commands work",
+        "Show me how",
+        "I'm confused",
+        "I don't understand"
+      ],
+      "entities": [],
+      "required_entities": [],
+      "confidence_boost": 0.1
+    },
+    {
+      "intent": "repeat_last",
+      "patterns": [
+        "Repeat that",
+        "Say that again",
+        "What did you say",
+        "Come again",
+        "Pardon",
+        "Sorry what",
+        "I didn't catch that",
+        "Can you repeat",
+        "One more time",
+        "Repeat please",
+        "Say again",
+        "What was that",
+        "I missed that",
+        "Could you repeat that"
+      ],
+      "entities": [],
+      "required_entities": [],
+      "confidence_boost": 0.1
+    }
+  ],
+  "entities": {
+    "drink": {
+      "type": "fuzzy_match",
+      "source": "drinks_database",
+      "confidence_threshold": 0.4
+    },
+    "quantity": {
+      "type": "number",
+      "patterns": ["\\b(\\d+)\\b", "\\b(one|two|three|four|five|six|seven|eight|nine|ten)\\b"],
+      "default": 1
+    },
+    "category": {
+      "type": "exact_match",
+      "values": ["beer", "wine", "cocktail", "spirit", "signature", "non-alcoholic"]
+    },
+    "customer": {
+      "type": "name_extraction",
+      "patterns": ["for ([A-Za-z]+)", "([A-Za-z]+)'s order"]
+    }
+  },
+  "confidence_adjustments": {
+    "drink_name_match": 0.3,
+    "quantity_present": 0.1,
+    "context_match": 0.2,
+    "pattern_complexity": 0.1
+  }
+} 

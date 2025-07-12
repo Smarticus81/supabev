@@ -1,0 +1,1015 @@
+[
+  {
+    "name": "Pineapple Smash",
+    "category": "Signature",
+    "subcategory": "Fruity",
+    "price": 12,
+    "inventory": 100,
+    "image_url": "/images/pineapple-smash.jpg",
+    "description": "Tropical pineapple cocktail with fresh fruit"
+  },
+  {
+    "name": "Cucumber Cooler",
+    "category": "Signature",
+    "subcategory": "Herbal",
+    "price": 12,
+    "inventory": 100,
+    "image_url": "/images/cucumber-cooler.jpg",
+    "description": "Refreshing cucumber-infused cocktail"
+  },
+  {
+    "name": "Lavender Vodka",
+    "category": "Signature",
+    "subcategory": "Herbal",
+    "price": 13,
+    "inventory": 99,
+    "sales": 1,
+    "image_url": "/images/lavender-vodka.jpg",
+    "description": "Floral lavender-infused vodka cocktail"
+  },
+  {
+    "name": "Old Fashioned",
+    "category": "Cocktails",
+    "subcategory": "Whiskey Cocktail",
+    "price": 10.0,
+    "inventory": 100,
+    "image_url": "/images/old-fashioned.jpg",
+    "description": "Bourbon, sugar, bitters, orange"
+  },
+  {
+    "name": "Moscow Mule",
+    "category": "Classics",
+    "subcategory": "Vodka",
+    "price": 12,
+    "inventory": 100,
+    "image_url": "/images/moscow-mule.jpg",
+    "description": "Vodka, ginger beer, lime in copper mug"
+  },
+  {
+    "name": "Espresso Martini",
+    "category": "Classics",
+    "subcategory": "Vodka",
+    "price": 13,
+    "inventory": 100,
+    "image_url": "/images/espresso-martini.jpg",
+    "description": "Vodka, espresso, coffee liqueur"
+  },
+  {
+    "name": "Bud Light",
+    "category": "Beer",
+    "subcategory": "Light Beer",
+    "price": 4.5,
+    "inventory": 100,
+    "image_url": "/images/bud-light.jpg",
+    "description": "America's favorite light beer"
+  },
+  {
+    "name": "Budweiser",
+    "category": "Beer",
+    "subcategory": "Lager",
+    "price": 4.75,
+    "inventory": 85,
+    "image_url": "/images/budweiser.jpg",
+    "description": "The king of beers"
+  },
+  {
+    "name": "Coors Light",
+    "category": "Beer",
+    "subcategory": "Light Beer",
+    "price": 4.5,
+    "inventory": 90,
+    "image_url": "/images/coors-light.jpg",
+    "description": "Cold activated for peak refreshment"
+  },
+  {
+    "name": "Miller Lite",
+    "category": "Beer",
+    "subcategory": "Light Beer",
+    "price": 4.5,
+    "inventory": 95,
+    "image_url": "/images/miller-lite.jpg",
+    "description": "Great taste, less filling"
+  },
+  {
+    "name": "Michelob Ultra",
+    "category": "Beer",
+    "subcategory": "Light Beer",
+    "price": 5,
+    "inventory": 200,
+    "image_url": "/images/michelob-ultra.jpg",
+    "description": "Superior light beer with fewer carbs"
+  },
+  {
+    "name": "Dos XX",
+    "category": "Beer",
+    "subcategory": "Mexican Beer",
+    "price": 6,
+    "inventory": 148,
+    "sales": 2,
+    "image_url": "/images/dos-xx.jpg",
+    "description": "Mexican lager beer"
+  },
+  {
+    "name": "Heineken",
+    "category": "Beer",
+    "subcategory": "Lager",
+    "price": 5.5,
+    "inventory": 80,
+    "image_url": "/images/heineken.jpg",
+    "description": "Premium Dutch lager"
+  },
+  {
+    "name": "Shiner Bock",
+    "category": "Beer",
+    "subcategory": "Ales",
+    "price": 6,
+    "inventory": 150,
+    "image_url": "/images/shiner-bock.jpg",
+    "description": "Texas-style amber lager"
+  },
+  {
+    "name": "Stella Artois",
+    "category": "Beer",
+    "subcategory": "Lager",
+    "price": 5.75,
+    "inventory": 70,
+    "image_url": "/images/stella-artois.jpg",
+    "description": "Belgian premium lager"
+  },
+  {
+    "name": "Corona Extra",
+    "category": "Beer",
+    "subcategory": "Mexican Beer",
+    "price": 5.25,
+    "inventory": 75,
+    "image_url": "/images/corona-extra.jpg",
+    "description": "Light, crisp beer with a lime"
+  },
+  {
+    "name": "Blue Moon",
+    "category": "Beer",
+    "subcategory": "Wheat Beer",
+    "price": 5.0,
+    "inventory": 65,
+    "image_url": "/images/blue-moon.jpg",
+    "description": "Belgian-style wheat beer"
+  },
+  {
+    "name": "IPA",
+    "category": "Beer",
+    "subcategory": "Craft Beer",
+    "price": 6.0,
+    "inventory": 60,
+    "image_url": "/images/ipa.jpg",
+    "description": "Hoppy India Pale Ale"
+  },
+  {
+    "name": "Guinness",
+    "category": "Beer",
+    "subcategory": "Stout",
+    "price": 6.25,
+    "inventory": 55,
+    "image_url": "/images/guinness.jpg",
+    "description": "Irish dry stout"
+  },
+  {
+    "name": "Truly's Seltzer",
+    "category": "Beer",
+    "subcategory": "Hard Seltzer",
+    "price": 6,
+    "inventory": 150,
+    "image_url": "/images/truly-seltzer.jpg",
+    "description": "Hard seltzer with natural flavors"
+  },
+  {
+    "name": "White Claw",
+    "category": "Beer",
+    "subcategory": "Hard Seltzer",
+    "price": 6,
+    "inventory": 150,
+    "image_url": "/images/white-claw.jpg",
+    "description": "Hard seltzer with fruit flavors"
+  },
+  {
+    "name": "Canyon Rd Cab",
+    "category": "Wine",
+    "subcategory": "Red Wine",
+    "price": 8,
+    "inventory": 50,
+    "image_url": "/images/canyon-rd-cab.jpg",
+    "description": "California Cabernet Sauvignon"
+  },
+  {
+    "name": "Daou Cab",
+    "category": "Wine",
+    "subcategory": "Red Wine",
+    "price": 10,
+    "inventory": 49,
+    "sales": 1,
+    "image_url": "/images/daou-cab.jpg",
+    "description": "Premium Paso Robles Cabernet"
+  },
+  {
+    "name": "Cabernet Sauvignon",
+    "category": "Wine",
+    "subcategory": "Red Wine",
+    "price": 8.5,
+    "inventory": 40,
+    "image_url": "/images/cabernet-sauvignon.jpg",
+    "description": "Full-bodied red wine"
+  },
+  {
+    "name": "Merlot",
+    "category": "Wine",
+    "subcategory": "Red Wine",
+    "price": 8.0,
+    "inventory": 45,
+    "image_url": "/images/merlot.jpg",
+    "description": "Smooth red wine"
+  },
+  {
+    "name": "Pinot Noir",
+    "category": "Wine",
+    "subcategory": "Red Wine",
+    "price": 9.0,
+    "inventory": 35,
+    "image_url": "/images/pinot-noir.jpg",
+    "description": "Light-bodied red wine"
+  },
+  {
+    "name": "Josh Wine",
+    "category": "Wine",
+    "subcategory": "White Wine",
+    "price": 9,
+    "inventory": 50,
+    "image_url": "/images/josh-wine.jpg",
+    "description": "California white wine blend"
+  },
+  {
+    "name": "Moscato",
+    "category": "Wine",
+    "subcategory": "White Wine",
+    "price": 8,
+    "inventory": 50,
+    "image_url": "/images/moscato.jpg",
+    "description": "Sweet Italian white wine"
+  },
+  {
+    "name": "Pinot G",
+    "category": "Wine",
+    "subcategory": "White Wine",
+    "price": 8,
+    "inventory": 50,
+    "image_url": "/images/pinot-grigio.jpg",
+    "description": "Light Italian white wine"
+  },
+  {
+    "name": "St. Helena Chard",
+    "category": "Wine",
+    "subcategory": "White Wine",
+    "price": 9,
+    "inventory": 50,
+    "image_url": "/images/chardonnay.jpg",
+    "description": "Napa Valley Chardonnay"
+  },
+  {
+    "name": "Sav Blanc",
+    "category": "Wine",
+    "subcategory": "White Wine",
+    "price": 9,
+    "inventory": 50,
+    "image_url": "/images/sauvignon-blanc.jpg",
+    "description": "Zesty white wine"
+  },
+  {
+    "name": "Chardonnay",
+    "category": "Wine",
+    "subcategory": "White Wine",
+    "price": 8.25,
+    "inventory": 50,
+    "image_url": "/images/chardonnay.jpg",
+    "description": "Crisp white wine"
+  },
+  {
+    "name": "Sauvignon Blanc",
+    "category": "Wine",
+    "subcategory": "White Wine",
+    "price": 7.75,
+    "inventory": 55,
+    "image_url": "/images/sauvignon-blanc.jpg",
+    "description": "Zesty white wine"
+  },
+  {
+    "name": "Pinot Grigio",
+    "category": "Wine",
+    "subcategory": "White Wine",
+    "price": 7.5,
+    "inventory": 60,
+    "image_url": "/images/pinot-grigio.jpg",
+    "description": "Light Italian white wine"
+  },
+  {
+    "name": "Riesling",
+    "category": "Wine",
+    "subcategory": "White Wine",
+    "price": 8.0,
+    "inventory": 40,
+    "image_url": "/images/riesling.jpg",
+    "description": "Sweet German white wine"
+  },
+  {
+    "name": "March Prosecco",
+    "category": "Wine",
+    "subcategory": "Sparkling Wine",
+    "price": 10,
+    "inventory": 50,
+    "image_url": "/images/prosecco.jpg",
+    "description": "Italian sparkling wine"
+  },
+  {
+    "name": "Prosecco",
+    "category": "Wine",
+    "subcategory": "Sparkling Wine",
+    "price": 9.5,
+    "inventory": 30,
+    "image_url": "/images/prosecco.jpg",
+    "description": "Italian sparkling wine"
+  },
+  {
+    "name": "Wycliff Champ",
+    "category": "Wine",
+    "subcategory": "Sparkling Wine",
+    "price": 12,
+    "inventory": 50,
+    "image_url": "/images/champagne.jpg",
+    "description": "California sparkling wine"
+  },
+  {
+    "name": "Champagne",
+    "category": "Wine",
+    "subcategory": "Sparkling Wine",
+    "price": 12.0,
+    "inventory": 25,
+    "image_url": "/images/champagne.jpg",
+    "description": "French sparkling wine"
+  },
+  {
+    "name": "Mojito",
+    "category": "Cocktails",
+    "subcategory": "Rum Cocktail",
+    "price": 9.0,
+    "inventory": 100,
+    "image_url": "/images/mojito.jpg",
+    "description": "White rum, mint, lime, sugar, soda"
+  },
+  {
+    "name": "Margarita",
+    "category": "Cocktails",
+    "subcategory": "Tequila Cocktail",
+    "price": 9.5,
+    "inventory": 100,
+    "image_url": "/images/margarita.jpg",
+    "description": "Tequila, lime juice, triple sec"
+  },
+  {
+    "name": "Manhattan",
+    "category": "Cocktails",
+    "subcategory": "Whiskey Cocktail",
+    "price": 10.5,
+    "inventory": 100,
+    "image_url": "/images/manhattan.jpg",
+    "description": "Rye whiskey, sweet vermouth, bitters"
+  },
+  {
+    "name": "Cosmopolitan",
+    "category": "Cocktails",
+    "subcategory": "Vodka Cocktail",
+    "price": 9.75,
+    "inventory": 100,
+    "image_url": "/images/cosmopolitan.jpg",
+    "description": "Vodka, cranberry, lime, triple sec"
+  },
+  {
+    "name": "Martini",
+    "category": "Cocktails",
+    "subcategory": "Gin Cocktail",
+    "price": 10.25,
+    "inventory": 100,
+    "image_url": "/images/martini.jpg",
+    "description": "Gin, dry vermouth, olive or lemon"
+  },
+  {
+    "name": "Whiskey Sour",
+    "category": "Cocktails",
+    "subcategory": "Whiskey Cocktail",
+    "price": 9.25,
+    "inventory": 100,
+    "image_url": "/images/whiskey-sour.jpg",
+    "description": "Bourbon, lemon juice, simple syrup"
+  },
+  {
+    "name": "Daiquiri",
+    "category": "Cocktails",
+    "subcategory": "Rum Cocktail",
+    "price": 8.75,
+    "inventory": 100,
+    "image_url": "/images/daiquiri.jpg",
+    "description": "White rum, lime juice, simple syrup"
+  },
+  {
+    "name": "Negroni",
+    "category": "Cocktails",
+    "subcategory": "Gin Cocktail",
+    "price": 10.75,
+    "inventory": 100,
+    "image_url": "/images/negroni.jpg",
+    "description": "Gin, Campari, sweet vermouth"
+  },
+  {
+    "name": "Pina Colada",
+    "category": "Cocktails",
+    "subcategory": "Rum Cocktail",
+    "price": 9.5,
+    "inventory": 100,
+    "image_url": "/images/pina-colada.jpg",
+    "description": "Rum, coconut cream, pineapple juice"
+  },
+  {
+    "name": "Bloody Mary",
+    "category": "Cocktails",
+    "subcategory": "Vodka Cocktail",
+    "price": 9.0,
+    "inventory": 100,
+    "image_url": "/images/bloody-mary.jpg",
+    "description": "Vodka, tomato juice, spices"
+  },
+  {
+    "name": "Angels Envy",
+    "category": "Spirits",
+    "subcategory": "Whiskey",
+    "price": 14,
+    "inventory": 49,
+    "sales": 1,
+    "image_url": "/images/angels-envy.jpg",
+    "description": "Premium Kentucky bourbon"
+  },
+  {
+    "name": "Basil Hayden",
+    "category": "Spirits",
+    "subcategory": "Whiskey",
+    "price": 14,
+    "inventory": 50,
+    "image_url": "/images/basil-hayden.jpg",
+    "description": "High-rye bourbon whiskey"
+  },
+  {
+    "name": "Crown Royal",
+    "category": "Spirits",
+    "subcategory": "Whiskey",
+    "price": 12,
+    "inventory": 49,
+    "sales": 1,
+    "image_url": "/images/crown-royal.jpg",
+    "description": "Canadian blended whiskey"
+  },
+  {
+    "name": "JD's Whiskey",
+    "category": "Spirits",
+    "subcategory": "Whiskey",
+    "price": 12,
+    "inventory": 50,
+    "image_url": "/images/jack-daniels.jpg",
+    "description": "Tennessee whiskey"
+  },
+  {
+    "name": "Jameson Whiskey",
+    "category": "Spirits",
+    "subcategory": "Whiskey",
+    "price": 12,
+    "inventory": 50,
+    "image_url": "/images/jameson.jpg",
+    "description": "Irish whiskey"
+  },
+  {
+    "name": "Jim Beam",
+    "category": "Spirits",
+    "subcategory": "Whiskey",
+    "price": 11,
+    "inventory": 50,
+    "image_url": "/images/jim-beam.jpg",
+    "description": "Kentucky bourbon"
+  },
+  {
+    "name": "J.W. Black",
+    "category": "Spirits",
+    "subcategory": "Whiskey",
+    "price": 14,
+    "inventory": 50,
+    "image_url": "/images/johnnie-walker.jpg",
+    "description": "Blended Scotch whiskey"
+  },
+  {
+    "name": "Makers Mark",
+    "category": "Spirits",
+    "subcategory": "Whiskey",
+    "price": 13,
+    "inventory": 50,
+    "image_url": "/images/makers-mark.jpg",
+    "description": "Wheated bourbon"
+  },
+  {
+    "name": "Woodford Reserve",
+    "category": "Spirits",
+    "subcategory": "Whiskey",
+    "price": 14,
+    "inventory": 50,
+    "image_url": "/images/woodford-reserve.jpg",
+    "description": "Premium Kentucky bourbon"
+  },
+  {
+    "name": "Whiskey",
+    "category": "Spirits",
+    "subcategory": "Whiskey",
+    "price": 8.0,
+    "inventory": 150,
+    "image_url": "/images/whiskey.jpg",
+    "description": "Smooth whiskey"
+  },
+  {
+    "name": "Bourbon",
+    "category": "Spirits",
+    "subcategory": "Whiskey",
+    "price": 9.0,
+    "inventory": 100,
+    "image_url": "/images/bourbon.jpg",
+    "description": "Kentucky bourbon"
+  },
+  {
+    "name": "Scotch",
+    "category": "Spirits",
+    "subcategory": "Whiskey",
+    "price": 10.0,
+    "inventory": 80,
+    "image_url": "/images/scotch.jpg",
+    "description": "Single malt Scotch"
+  },
+  {
+    "name": "Well Vodka",
+    "category": "Spirits",
+    "subcategory": "Vodka",
+    "price": 10,
+    "inventory": 50,
+    "image_url": "/images/vodka.jpg",
+    "description": "House vodka"
+  },
+  {
+    "name": "G.Goose Vodka",
+    "category": "Spirits",
+    "subcategory": "Vodka",
+    "price": 13,
+    "inventory": 50,
+    "image_url": "/images/grey-goose.jpg",
+    "description": "Premium French vodka"
+  },
+  {
+    "name": "Tito's Vodka",
+    "category": "Spirits",
+    "subcategory": "Vodka",
+    "price": 12,
+    "inventory": 50,
+    "image_url": "/images/titos.jpg",
+    "description": "Handmade vodka"
+  },
+  {
+    "name": "Vodka",
+    "category": "Spirits",
+    "subcategory": "Vodka",
+    "price": 7.0,
+    "inventory": 200,
+    "image_url": "/images/vodka.jpg",
+    "description": "Premium vodka"
+  },
+  {
+    "name": "Captain Morgan",
+    "category": "Spirits",
+    "subcategory": "Rum",
+    "price": 11,
+    "inventory": 50,
+    "image_url": "/images/captain-morgan.jpg",
+    "description": "Spiced rum"
+  },
+  {
+    "name": "Cruzan Light",
+    "category": "Spirits",
+    "subcategory": "Rum",
+    "price": 10,
+    "inventory": 50,
+    "image_url": "/images/cruzan.jpg",
+    "description": "Light Caribbean rum"
+  },
+  {
+    "name": "Malibu",
+    "category": "Spirits",
+    "subcategory": "Rum",
+    "price": 10,
+    "inventory": 50,
+    "image_url": "/images/malibu.jpg",
+    "description": "Coconut rum"
+  },
+  {
+    "name": "Rum",
+    "category": "Spirits",
+    "subcategory": "Rum",
+    "price": 7.5,
+    "inventory": 175,
+    "image_url": "/images/rum.jpg",
+    "description": "Caribbean rum"
+  },
+  {
+    "name": "1800 Silver",
+    "category": "Spirits",
+    "subcategory": "Tequila",
+    "price": 12,
+    "inventory": 50,
+    "image_url": "/images/1800-silver.jpg",
+    "description": "100% agave silver tequila"
+  },
+  {
+    "name": "Casamigos",
+    "category": "Spirits",
+    "subcategory": "Tequila",
+    "price": 14,
+    "inventory": 50,
+    "image_url": "/images/casamigos.jpg",
+    "description": "Premium blanco tequila"
+  },
+  {
+    "name": "Don Julio",
+    "category": "Spirits",
+    "subcategory": "Tequila",
+    "price": 14,
+    "inventory": 50,
+    "image_url": "/images/don-julio.jpg",
+    "description": "Premium silver tequila"
+  },
+  {
+    "name": "Exotico Teq Blanco",
+    "category": "Spirits",
+    "subcategory": "Tequila",
+    "price": 11,
+    "inventory": 50,
+    "image_url": "/images/exotico.jpg",
+    "description": "Blanco tequila"
+  },
+  {
+    "name": "Patron Silver",
+    "category": "Spirits",
+    "subcategory": "Tequila",
+    "price": 14,
+    "inventory": 50,
+    "image_url": "/images/patron.jpg",
+    "description": "Ultra-premium silver tequila"
+  },
+  {
+    "name": "Tequila",
+    "category": "Spirits",
+    "subcategory": "Tequila",
+    "price": 8.5,
+    "inventory": 125,
+    "image_url": "/images/tequila.jpg",
+    "description": "100% agave tequila"
+  },
+  {
+    "name": "Bombay Sapphire",
+    "category": "Spirits",
+    "subcategory": "Gin",
+    "price": 12,
+    "inventory": 50,
+    "image_url": "/images/bombay-sapphire.jpg",
+    "description": "Premium London dry gin"
+  },
+  {
+    "name": "Hendricks Gin",
+    "category": "Spirits",
+    "subcategory": "Gin",
+    "price": 13,
+    "inventory": 50,
+    "image_url": "/images/hendricks.jpg",
+    "description": "Cucumber and rose infused gin"
+  },
+  {
+    "name": "New Amsterdam",
+    "category": "Spirits",
+    "subcategory": "Gin",
+    "price": 11,
+    "inventory": 50,
+    "image_url": "/images/new-amsterdam.jpg",
+    "description": "Smooth gin"
+  },
+  {
+    "name": "Gin",
+    "category": "Spirits",
+    "subcategory": "Gin",
+    "price": 7.75,
+    "inventory": 140,
+    "image_url": "/images/gin.jpg",
+    "description": "London dry gin"
+  },
+  {
+    "name": "Hennessy Cognac",
+    "category": "Spirits",
+    "subcategory": "Brandy",
+    "price": 14,
+    "inventory": 50,
+    "image_url": "/images/hennessy.jpg",
+    "description": "Premium cognac"
+  },
+  {
+    "name": "Glenlivet Reserve",
+    "category": "Spirits",
+    "subcategory": "Whiskey",
+    "price": 15,
+    "inventory": 50,
+    "image_url": "/images/glenlivet.jpg",
+    "description": "Single malt Scotch whisky"
+  },
+  {
+    "name": "Cognac",
+    "category": "Spirits",
+    "subcategory": "Brandy",
+    "price": 12.0,
+    "inventory": 60,
+    "image_url": "/images/cognac.jpg",
+    "description": "French cognac"
+  },
+  {
+    "name": "Signature Mule",
+    "category": "Signature Drinks",
+    "subcategory": "House Special",
+    "price": 11.0,
+    "inventory": 100,
+    "image_url": "/images/signature-mule.jpg",
+    "description": "House special Moscow mule variation"
+  },
+  {
+    "name": "Craft Punch",
+    "category": "Signature Drinks",
+    "subcategory": "House Special",
+    "price": 10.5,
+    "inventory": 100,
+    "image_url": "/images/craft-punch.jpg",
+    "description": "Seasonal fruit punch cocktail"
+  },
+  {
+    "name": "Smoky Old Fashioned",
+    "category": "Signature Drinks",
+    "subcategory": "House Special",
+    "price": 12.5,
+    "inventory": 100,
+    "image_url": "/images/smoky-old-fashioned.jpg",
+    "description": "Smoked bourbon old fashioned"
+  },
+  {
+    "name": "Garden Gimlet",
+    "category": "Signature Drinks",
+    "subcategory": "House Special",
+    "price": 11.5,
+    "inventory": 100,
+    "image_url": "/images/garden-gimlet.jpg",
+    "description": "Herb-infused gin cocktail"
+  },
+  {
+    "name": "Tropical Fizz",
+    "category": "Signature Drinks",
+    "subcategory": "House Special",
+    "price": 10.0,
+    "inventory": 100,
+    "image_url": "/images/tropical-fizz.jpg",
+    "description": "Tropical fruit sparkling cocktail"
+  },
+  {
+    "name": "Spiced Pear Martini",
+    "category": "Signature Drinks",
+    "subcategory": "House Special",
+    "price": 12.0,
+    "inventory": 100,
+    "image_url": "/images/spiced-pear-martini.jpg",
+    "description": "Pear vodka with warm spices"
+  },
+  {
+    "name": "Club Soda",
+    "category": "Non-Alcoholic",
+    "subcategory": "Sodas",
+    "price": 3,
+    "inventory": 200,
+    "image_url": "/images/club-soda.jpg",
+    "description": "Carbonated water"
+  },
+  {
+    "name": "Coke",
+    "category": "Non-Alcoholic",
+    "subcategory": "Soft Drink",
+    "price": 3.0,
+    "inventory": 200,
+    "image_url": "/images/coca-cola.jpg",
+    "description": "Classic cola"
+  },
+  {
+    "name": "Diet Coke",
+    "category": "Non-Alcoholic",
+    "subcategory": "Soft Drink",
+    "price": 3,
+    "inventory": 200,
+    "image_url": "/images/diet-coke.jpg",
+    "description": "Diet cola"
+  },
+  {
+    "name": "Ginger Ale",
+    "category": "Non-Alcoholic",
+    "subcategory": "Sodas",
+    "price": 3,
+    "inventory": 200,
+    "image_url": "/images/ginger-ale.jpg",
+    "description": "Ginger-flavored soda"
+  },
+  {
+    "name": "Sprite",
+    "category": "Non-Alcoholic",
+    "subcategory": "Soft Drink",
+    "price": 3.0,
+    "inventory": 200,
+    "image_url": "/images/sprite.jpg",
+    "description": "Lemon-lime soda"
+  },
+  {
+    "name": "Tonic Water",
+    "category": "Non-Alcoholic",
+    "subcategory": "Sodas",
+    "price": 3,
+    "inventory": 200,
+    "image_url": "/images/tonic-water.jpg",
+    "description": "Quinine-flavored soda"
+  },
+  {
+    "name": "Cranberry Juice",
+    "category": "Non-Alcoholic",
+    "subcategory": "Juice",
+    "price": 3.5,
+    "inventory": 150,
+    "image_url": "/images/cranberry-juice.jpg",
+    "description": "Tart cranberry juice"
+  },
+  {
+    "name": "Orange Juice",
+    "category": "Non-Alcoholic",
+    "subcategory": "Juice",
+    "price": 3.5,
+    "inventory": 150,
+    "image_url": "/images/orange-juice.jpg",
+    "description": "Fresh orange juice"
+  },
+  {
+    "name": "Apple Juice",
+    "category": "Non-Alcoholic",
+    "subcategory": "Juice",
+    "price": 3.5,
+    "inventory": 150,
+    "image_url": "/images/apple-juice.jpg",
+    "description": "Fresh apple juice"
+  },
+  {
+    "name": "Pineapple Juice",
+    "category": "Non-Alcoholic",
+    "subcategory": "Juices",
+    "price": 3,
+    "inventory": 100,
+    "image_url": "/images/pineapple-juice.jpg",
+    "description": "Tropical pineapple juice"
+  },
+  {
+    "name": "Lemonade",
+    "category": "Non-Alcoholic",
+    "subcategory": "Juice",
+    "price": 3.25,
+    "inventory": 180,
+    "image_url": "/images/lemonade.jpg",
+    "description": "Fresh squeezed lemonade"
+  },
+  {
+    "name": "Blueberry Lemonade",
+    "category": "Non-Alcoholic",
+    "subcategory": "Other",
+    "price": 4,
+    "inventory": 50,
+    "image_url": "/images/blueberry-lemonade.jpg",
+    "description": "Blueberry-infused lemonade"
+  },
+  {
+    "name": "Lav Lemonade",
+    "category": "Non-Alcoholic",
+    "subcategory": "Other",
+    "price": 4,
+    "inventory": 50,
+    "image_url": "/images/lavender-lemonade.jpg",
+    "description": "Lavender-infused lemonade"
+  },
+  {
+    "name": "Sparkling Water",
+    "category": "Non-Alcoholic",
+    "subcategory": "Water",
+    "price": 2.5,
+    "inventory": 300,
+    "image_url": "/images/sparkling-water.jpg",
+    "description": "Carbonated water"
+  },
+  {
+    "name": "Sparkling Cider",
+    "category": "Non-Alcoholic",
+    "subcategory": "Other",
+    "price": 4,
+    "inventory": 50,
+    "image_url": "/images/sparkling-cider.jpg",
+    "description": "Sparkling apple cider"
+  },
+  {
+    "name": "Iced Tea",
+    "category": "Non-Alcoholic",
+    "subcategory": "Tea",
+    "price": 3.0,
+    "inventory": 200,
+    "image_url": "/images/iced-tea.jpg",
+    "description": "Fresh brewed iced tea"
+  },
+  {
+    "name": "Green Tea",
+    "category": "Non-Alcoholic",
+    "subcategory": "Tea",
+    "price": 3.0,
+    "inventory": 250,
+    "image_url": "/images/green-tea.jpg",
+    "description": "Antioxidant-rich green tea"
+  },
+  {
+    "name": "Coffee",
+    "category": "Non-Alcoholic",
+    "subcategory": "Coffee",
+    "price": 3.25,
+    "inventory": 250,
+    "image_url": "/images/coffee.jpg",
+    "description": "Freshly brewed coffee"
+  },
+  {
+    "name": "Espresso",
+    "category": "Non-Alcoholic",
+    "subcategory": "Coffee",
+    "price": 3.75,
+    "inventory": 250,
+    "image_url": "/images/espresso.jpg",
+    "description": "Strong Italian espresso"
+  },
+  {
+    "name": "Hot Chocolate",
+    "category": "Non-Alcoholic",
+    "subcategory": "Hot Beverage",
+    "price": 3.75,
+    "inventory": 200,
+    "image_url": "/images/hot-chocolate.jpg",
+    "description": "Rich hot chocolate with marshmallows"
+  },
+  {
+    "name": "Virgin Mojito",
+    "category": "Non-Alcoholic",
+    "subcategory": "Mocktail",
+    "price": 4.5,
+    "inventory": 100,
+    "image_url": "/images/virgin-mojito.jpg",
+    "description": "Non-alcoholic mojito with mint and lime"
+  },
+  {
+    "name": "Shirley Temple",
+    "category": "Non-Alcoholic",
+    "subcategory": "Mocktail",
+    "price": 4.0,
+    "inventory": 100,
+    "image_url": "/images/shirley-temple.jpg",
+    "description": "Ginger ale with grenadine and cherry"
+  },
+  {
+    "name": "Arnold Palmer",
+    "category": "Non-Alcoholic",
+    "subcategory": "Mocktail",
+    "price": 4.25,
+    "inventory": 100,
+    "image_url": "/images/arnold-palmer.jpg",
+    "description": "Half iced tea, half lemonade"
+  },
+  {
+    "name": "The Honeymoon",
+    "category": "Non-Alcoholic",
+    "subcategory": "Other",
+    "price": 5,
+    "inventory": 50,
+    "image_url": "/images/honeymoon.jpg",
+    "description": "Specialty non-alcoholic cocktail"
+  }
+]
