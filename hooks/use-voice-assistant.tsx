@@ -16,12 +16,23 @@ interface OrderUpdateData {
   order_id: number;
 }
 
+interface CartUpdateData {
+  cart: OrderItem[];
+}
+
+interface InventoryUpdateData {
+  drinks: any[];
+  timestamp: number;
+}
+
 type VoiceMode = 'wake_word' | 'command' | 'processing';
 
 const useVoiceAssistant = (
   onTranscript: (text: string) => void,
   onOrderUpdate?: (data: OrderUpdateData) => void,
-  onCartClear?: () => void
+  onCartUpdate?: (data: CartUpdateData) => void,
+  onCartClear?: () => void,
+  onInventoryUpdate?: (data: InventoryUpdateData) => void
 ) => {
   const [isListening, setIsListening] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
@@ -30,18 +41,63 @@ const useVoiceAssistant = (
 
   const socketRef = useRef<WebSocket | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const currentAudioRef = useRef<HTMLAudioElement | null>(null);
+  const audioQueueRef = useRef<Array<{ data: string; type?: string; priority?: 'high' | 'normal' }>>([]);
+  const isPlayingAudioRef = useRef(false);
 
-  // Play audio from base64 data
-  const playAudio = (base64Data: string, audioType?: string) => {
+  // Play audio from base64 data with queue management and interruptability
+  const playAudio = (base64Data: string, audioType?: string, priority: 'high' | 'normal' = 'normal') => {
+    const audioItem = { data: base64Data, type: audioType, priority };
+    
+    // High priority audio interrupts current playback
+    if (priority === 'high') {
+      // Stop current audio immediately
+      if (currentAudioRef.current) {
+        currentAudioRef.current.pause();
+        currentAudioRef.current.currentTime = 0;
+        currentAudioRef.current = null;
+      }
+      
+      // Clear queue and add high priority item to front
+      audioQueueRef.current = [audioItem];
+      isPlayingAudioRef.current = false;
+      processAudioQueue();
+    } else {
+      // Normal priority audio goes to queue
+      audioQueueRef.current.push(audioItem);
+      
+      // Process queue if not already playing
+      if (!isPlayingAudioRef.current) {
+        processAudioQueue();
+      }
+    }
+  };
+
+  const processAudioQueue = () => {
+    if (audioQueueRef.current.length === 0) {
+      isPlayingAudioRef.current = false;
+      return;
+    }
+
+    isPlayingAudioRef.current = true;
+    const audioItem = audioQueueRef.current.shift()!;
+
     try {
-      const audioData = atob(base64Data);
+      // Stop any currently playing audio
+      if (currentAudioRef.current) {
+        currentAudioRef.current.pause();
+        currentAudioRef.current.currentTime = 0;
+        currentAudioRef.current = null;
+      }
+
+      const audioData = atob(audioItem.data);
       const audioBuffer = new Uint8Array(audioData.length);
       for (let i = 0; i < audioData.length; i++) {
         audioBuffer[i] = audioData.charCodeAt(i);
       }
       
       let mimeType = 'audio/wav';
-      if (audioType === 'tts_response') {
+      if (audioItem.type === 'tts_response') {
         mimeType = 'audio/mp3';
       }
       
@@ -49,15 +105,34 @@ const useVoiceAssistant = (
       const audioUrl = URL.createObjectURL(audioBlob);
       const audio = new Audio(audioUrl);
       
+      currentAudioRef.current = audio;
+      
       audio.onended = () => {
         URL.revokeObjectURL(audioUrl);
+        currentAudioRef.current = null;
+        // Process next item in queue
+        const delay = audioItem.priority === 'high' ? 50 : 100; // Shorter delay for high priority
+        setTimeout(() => processAudioQueue(), delay);
+      };
+      
+      audio.onerror = () => {
+        console.error('Error playing audio');
+        URL.revokeObjectURL(audioUrl);
+        currentAudioRef.current = null;
+        // Process next item in queue even on error
+        setTimeout(() => processAudioQueue(), 100);
       };
       
       audio.play().catch(err => {
         console.error('Error playing audio:', err);
+        currentAudioRef.current = null;
+        // Process next item in queue even on error
+        setTimeout(() => processAudioQueue(), 100);
       });
     } catch (error) {
       console.error('Error processing audio:', error);
+      // Process next item in queue even on error
+      setTimeout(() => processAudioQueue(), 100);
     }
   };
 
@@ -111,13 +186,24 @@ const useVoiceAssistant = (
           // Reset wake word detected state after a short delay
           setTimeout(() => setWakeWordDetected(false), 2000);
         } else if (message.type === 'audio') {
-          playAudio(message.data, message.audioType);
+          // High priority for wake word chimes and success tones for immediate feedback
+          const priority = (message.audioType === 'wake_word_chime' || message.audioType === 'success_tone') ? 'high' : 'normal';
+          playAudio(message.data, message.audioType, priority);
         } else if (message.type === 'order_update' && onOrderUpdate) {
           console.log('Received order update:', message.data);
           onOrderUpdate(message.data);
+        } else if (message.type === 'cart_update' && onCartUpdate) {
+          console.log('Received cart update:', message.data);
+          console.log('Cart update data.cart type:', typeof message.data.cart);
+          console.log('Cart update data.cart isArray:', Array.isArray(message.data.cart));
+          console.log('Cart update data.cart value:', message.data.cart);
+          onCartUpdate(message.data);
         } else if (message.type === 'cart_clear' && onCartClear) {
           console.log('Received cart clear message:', message.data);
           onCartClear();
+        } else if (message.type === 'inventory_update' && onInventoryUpdate) {
+          console.log('Received inventory update:', message.data);
+          onInventoryUpdate(message.data);
         }
       };
 
@@ -138,6 +224,14 @@ const useVoiceAssistant = (
       if (socketRef.current) {
         socketRef.current.close();
       }
+      // Stop any playing audio and clear queue
+      if (currentAudioRef.current) {
+        currentAudioRef.current.pause();
+        currentAudioRef.current.currentTime = 0;
+        currentAudioRef.current = null;
+      }
+      audioQueueRef.current = [];
+      isPlayingAudioRef.current = false;
       setMode('wake_word');
       setWakeWordDetected(false);
     }
@@ -150,8 +244,16 @@ const useVoiceAssistant = (
       if (socketRef.current) {
         socketRef.current.close();
       }
+      // Stop any playing audio and clear queue
+      if (currentAudioRef.current) {
+        currentAudioRef.current.pause();
+        currentAudioRef.current.currentTime = 0;
+        currentAudioRef.current = null;
+      }
+      audioQueueRef.current = [];
+      isPlayingAudioRef.current = false;
     };
-  }, [isListening, onOrderUpdate, onCartClear]);
+  }, [isListening, onOrderUpdate, onCartUpdate, onCartClear, onInventoryUpdate]);
 
   const toggleListening = () => setIsListening((prev) => !prev);
 

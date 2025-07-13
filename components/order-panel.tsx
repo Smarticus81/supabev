@@ -10,6 +10,12 @@ export default function OrderPanel({ orders, removeFromOrder, updateQuantity, to
   // Add debug logging
   useEffect(() => {
     console.log("OrderPanel received orders:", orders)
+    console.log("Orders length:", orders?.length)
+    console.log("Orders type:", typeof orders, Array.isArray(orders))
+
+    if (orders && orders.length > 0) {
+      console.log("First order item:", orders[0])
+    }
 
     // Validate order data
     const invalidItems = orders.filter(

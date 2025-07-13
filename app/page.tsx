@@ -2,10 +2,10 @@
 
 // @ts-ignore
 import { useState, useEffect, useMemo, useCallback } from "react"
-import { Search, Save, CreditCard, Menu, Users, Receipt, Package, X } from "lucide-react"
+import { Search, Save, CreditCard, Menu, Users, Receipt, Package, X, Settings } from "lucide-react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Input } from "@/components/ui/input"
 import { Toaster } from "@/components/ui/toaster"
 import OrderPanel from "@/components/order-panel";
@@ -16,6 +16,11 @@ import TabsView from "@/components/tabs-view"
 import TransactionsView from "@/components/transactions-view"
 import VoiceAssistantButton from "@/components/voice-assistant-button";
 import useVoiceAssistant from "@/hooks/use-voice-assistant";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
+import { useForm } from 'react-hook-form'
+import { useIsMobile } from '@/hooks/use-mobile'
+import { useToast } from '@/components/ui/use-toast'
 
 interface OrderItem {
   id: string;
@@ -73,14 +78,57 @@ export default function Home() {
     }
   }, []);
 
+  const handleCartUpdate = useCallback((data: any) => {
+    console.log("handleCartUpdate called with data:", data);
+    if (data.cart && Array.isArray(data.cart)) {
+      console.log("Cart is valid array, mapping items:", data.cart);
+      const newCart = data.cart.map((item: any, index: number) => ({
+        id: `voice_cart_${index}`,
+        name: item.drink_name || item.name,
+        price: item.price || 5.50, // Default price, could be enhanced to lookup actual prices
+        quantity: item.quantity,
+        serving_name: item.serving_name
+      }));
+      console.log("Setting orders to:", newCart);
+      setOrders(newCart);
+    } else {
+      console.log("Cart data is invalid or not an array:", data);
+    }
+  }, []);
+
   // Handle cart clear from voice assistant
   const handleCartClear = useCallback(() => {
     console.log("Clearing cart from voice command");
     setOrders([]);
   }, []);
 
+  // Handle inventory updates from voice assistant
+  const handleInventoryUpdate = useCallback((data: any) => {
+    console.log("handleInventoryUpdate called with data:", data);
+    if (data.drinks && Array.isArray(data.drinks)) {
+      console.log("Inventory is valid array, updating drinks:", data.drinks.length, "items");
+      setDrinks(data.drinks);
+      
+      // Extract unique categories from updated drinks
+      const uniqueCategories = [...new Set(data.drinks.map((drink: any) => drink.category))] as string[];
+      setCategories(uniqueCategories);
+      
+      // If inventory updated due to order completion, refresh the current view
+      // This helps keep all data in sync across tabs
+      window.dispatchEvent(new CustomEvent('inventoryUpdated', { detail: data }));
+    } else {
+      console.log("Inventory data is invalid or not an array:", data);
+    }
+  }, []);
+
   // Initialize voice assistant
-  const { isListening, toggleListening, mode, wakeWordDetected } = useVoiceAssistant(handleTranscript, handleOrderUpdate, handleCartClear);
+  const { isListening, toggleListening, mode, wakeWordDetected } = useVoiceAssistant(
+    handleTranscript, 
+    handleOrderUpdate, 
+    handleCartUpdate, 
+    handleCartClear, 
+    handleInventoryUpdate
+  );
 
   // old Vapi voice removed
 
@@ -152,6 +200,7 @@ export default function Home() {
 
   // Clear entire cart
   const clearCart = () => {
+    console.log("clearCart called - clearing orders");
     setOrders([])
   }
 
@@ -219,6 +268,89 @@ export default function Home() {
     } catch (error) {
       console.error('Error completing order:', error);
       alert('Error completing order. Please try again.');
+    }
+  }
+
+  const isMobile = useIsMobile()
+
+  const form = useForm({
+    defaultValues: {
+      tts_provider: 'deepgram',
+      tts_voice: 'aura-2-juno-en'
+    }
+  })
+
+  const { toast } = useToast()
+  const [config, setConfig] = useState({ tts_provider: 'deepgram', tts_voice: 'aura-2-juno-en' })
+  const [voices, setVoices] = useState<{id: string, name: string}[]>([])
+
+  useEffect(() => {
+    if (currentTab === 'settings') {
+      fetch('/api/config')
+        .then(res => res.json())
+        .then(data => {
+          if (data.config) {
+            setConfig(data.config)
+            // First fetch voices, then reset form
+            fetchVoices(data.config.tts_provider).then(() => {
+              form.reset(data.config)
+            })
+          } else {
+            // No config found, use defaults and fetch voices
+            fetchVoices('deepgram')
+          }
+        })
+        .catch(console.error)
+    }
+  }, [currentTab, form])
+
+  const fetchVoices = async (provider: string, autoSelect: boolean = false): Promise<void> => {
+    try {
+      const res = await fetch(`/api/tts/voices?provider=${provider}`)
+      const data = await res.json()
+      // Deduplicate by id to avoid React key warnings
+      const unique = {} as Record<string, {id: string; name: string}>
+      ;(data.voices || []).forEach((v: any) => { if(!unique[v.id]) unique[v.id] = v })
+      const uniqueVoices = Object.values(unique)
+      setVoices(uniqueVoices)
+      
+      // Auto-select first voice when provider changes
+      if (autoSelect && uniqueVoices.length > 0) {
+        form.setValue('tts_voice', uniqueVoices[0].id, { shouldValidate: true })
+      }
+      
+      return Promise.resolve()
+    } catch (error) {
+      console.error('Failed to fetch voices', error)
+      setVoices([])
+      return Promise.resolve()
+    }
+  }
+
+  // Watch provider change
+  useEffect(() => {
+    const subscription = form.watch((value, { name }) => {
+      if (name === 'tts_provider' && value.tts_provider) {
+        fetchVoices(value.tts_provider, true) // Auto-select when provider changes
+      }
+    })
+    return () => subscription.unsubscribe()
+  }, [form])
+
+  const onSubmit = async (data: { tts_provider: string; tts_voice: string }) => {
+    try {
+      const res = await fetch('/api/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      })
+      if (res.ok) {
+        toast({ title: 'Settings saved', description: 'TTS configuration updated successfully.' })
+      } else {
+        throw new Error('Failed to save')
+      }
+    } catch (error) {
+      toast({ title: 'Error', description: 'Failed to save settings.', variant: 'destructive' })
     }
   }
 
@@ -325,6 +457,7 @@ export default function Home() {
                 updateQuantity={updateQuantity}
                 total={calculateTotal()}
                 onCompleteOrder={completeOrder}
+                key={JSON.stringify(orders)}
               />
             </div>
           </>
@@ -335,6 +468,7 @@ export default function Home() {
               onAddToOrder={addToOrder}
               searchQuery={searchQuery}
               onSearchChange={setSearchQuery}
+              onRefresh={fetchDrinks}
             />
           </div>
         ) : currentTab === "tabs" ? (
@@ -344,6 +478,61 @@ export default function Home() {
         ) : currentTab === "transactions" ? (
           <div className="flex-1 p-3 sm:p-6 min-h-0">
             <TransactionsView />
+          </div>
+        ) : currentTab === "settings" ? (
+          <div className="flex-1 p-3 sm:p-6 min-h-0">
+            <Card className="p-6">
+              <Form {...form}>
+                <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+                  <FormField
+                    control={form.control}
+                    name="tts_provider"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>TTS Provider</FormLabel>
+                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select provider" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="deepgram">Deepgram</SelectItem>
+                            <SelectItem value="elevenlabs">ElevenLabs</SelectItem>
+                            <SelectItem value="hume">Hume AI</SelectItem>
+                            <SelectItem value="rime">RIME LBS</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="tts_voice"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Voice Model</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value || ''}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select voice" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {voices.map((voice) => (
+                              <SelectItem key={voice.id} value={voice.id}>{voice.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <Button type="submit">Save Settings</Button>
+                </form>
+              </Form>
+            </Card>
           </div>
         ) : null}
       </div>
@@ -408,6 +597,15 @@ export default function Home() {
           >
             <Package className="h-5 w-5" />
             <span className="text-xs">Items</span>
+          </Button>
+
+          <Button
+            variant={currentTab === "settings" ? "default" : "ghost"}
+            className="flex flex-col items-center gap-1 h-auto py-2 px-3 sm:px-4 min-w-0"
+            onClick={() => setCurrentTab("settings")}
+          >
+            <Settings className="h-5 w-5" />
+            <span className="text-xs">Settings</span>
           </Button>
         </div>
       </div>

@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Search, Plus, Edit, Trash2, Package, AlertTriangle, Info } from "lucide-react"
+import { Search, Plus, Edit, Trash2, Package, AlertTriangle, Info, RefreshCw } from "lucide-react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 
 
@@ -16,12 +16,19 @@ interface ItemsViewProps {
   onAddToOrder: (drink: any) => void
   searchQuery: string
   onSearchChange: (query: string) => void
+  onRefresh: () => void
 }
 
-export default function ItemsView({ drinks, onAddToOrder, searchQuery, onSearchChange }: ItemsViewProps) {
+export default function ItemsView({ drinks, onAddToOrder, searchQuery, onSearchChange, onRefresh }: ItemsViewProps) {
   const [selectedCategory, setSelectedCategory] = useState("All")
   const [sortBy, setSortBy] = useState("name")
   const [filteredDrinks, setFilteredDrinks] = useState([])
+  const [lastUpdated, setLastUpdated] = useState(new Date())
+
+  // Update timestamp when drinks data changes
+  useEffect(() => {
+    setLastUpdated(new Date())
+  }, [drinks])
 
   // Filter out signature drinks and classics from inventory (they're made to order)
   const inventoryDrinks = useMemo(() => {
@@ -94,6 +101,7 @@ export default function ItemsView({ drinks, onAddToOrder, searchQuery, onSearchC
         <div>
           <h2 className="text-2xl font-semibold text-gray-900">Inventory Management</h2>
           <p className="text-gray-600">Manage your beverage inventory</p>
+          <p className="text-xs text-gray-500 mt-1">Last updated: {lastUpdated.toLocaleTimeString()}</p>
         </div>
         <div className="flex items-center gap-4">
           <div className="relative">
@@ -220,6 +228,10 @@ export default function ItemsView({ drinks, onAddToOrder, searchQuery, onSearchC
         <CardHeader>
           <CardTitle className="flex items-center justify-between">
             <span>Inventory Items ({filteredDrinks.length})</span>
+            <Button variant="ghost" onClick={onRefresh}>
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Refresh
+            </Button>
             <div className="text-sm text-gray-500">
               Showing {selectedCategory === "All" ? "all categories" : selectedCategory.toLowerCase()}
             </div>
@@ -234,7 +246,7 @@ export default function ItemsView({ drinks, onAddToOrder, searchQuery, onSearchC
 
                 return (
                   <div
-                    key={drink.id}
+                    key={`${drink.id || drink.name}-${drink.category}`}
                     className="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
                   >
                     <div className="flex items-center space-x-4">

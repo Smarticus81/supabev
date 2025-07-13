@@ -32,6 +32,12 @@ export default function DrinksList({ drinks, addToOrder, isLoading }) {
     )
   }
 
+  const getInventoryColor = (inventory) => {
+    if (inventory <= 10) return 'text-red-600';
+    if (inventory <= 25) return 'text-yellow-600';
+    return 'text-green-600';
+  };
+
   return (
     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
       {drinks.map((drink) => (
@@ -49,7 +55,7 @@ export default function DrinksList({ drinks, addToOrder, isLoading }) {
                 <p className="font-bold text-lg text-gray-900">
                   ${drink.serving_options && drink.serving_options[0] ? drink.serving_options[0].price.toFixed(2) : 'N/A'}
                 </p>
-                <p className="text-xs text-gray-400">Stock: {drink.inventory}</p>
+                <p className={`text-xs font-medium ${getInventoryColor(drink.inventory)}`}>Stock: {drink.inventory}</p>
               </div>
               <Button
                 size="icon"

@@ -67,11 +67,45 @@
         "We now have {quantity} {drink}",
         "The {drink} count is now {quantity}",
         "Change the stock of {drink} to {quantity}",
-        "Set the level of {drink} to {quantity}"
+        "Set the level of {drink} to {quantity}",
+        "Update that for me",
+        "Can you update that",
+        "Update that inventory",
+        "Make that change",
+        "Apply that update"
       ],
       "entities": ["drink", "quantity"],
       "required_entities": ["drink", "quantity"],
       "confidence_boost": 0.2
+    },
+    {
+      "intent": "add_inventory",
+      "patterns": [
+        "We received {quantity} more {drink}",
+        "Add {quantity} {drink} to inventory",
+        "We got {quantity} more {drink}",
+        "Received {quantity} more bottles",
+        "We received {quantity} more bottles",
+        "Got {quantity} more {drink}",
+        "Add {quantity} to {drink} inventory",
+        "Increase {drink} by {quantity}",
+        "We have {quantity} more {drink}",
+        "Just got {quantity} more {drink}",
+        "Delivery of {quantity} {drink}",
+        "Restocked {quantity} {drink}",
+        "New shipment of {quantity} {drink}",
+        "We received five more bottles",
+        "We got more bottles",
+        "We received more {drink}",
+        "Add more {drink}",
+        "Increase inventory",
+        "Add to inventory",
+        "Restock that",
+        "Add those bottles"
+      ],
+      "entities": ["drink", "quantity"],
+      "required_entities": ["quantity"],
+      "confidence_boost": 0.3
     },
     {
       "intent": "multi_drink_order",
@@ -366,6 +400,25 @@
       "entities": [],
       "required_entities": [],
       "confidence_boost": 0.1
+    },
+    {
+      "intent": "create_order",
+      "patterns": [
+        "Create an order for the following items",
+        "Place an order with these drinks",
+        "Finalize my order",
+        "Process the order",
+        "Complete my order",
+        "Go ahead and process the order",
+        "Process my order",
+        "Place my order",
+        "Finalize order",
+        "Complete purchase",
+        "I'm ready to order"
+      ],
+      "entities": [],
+      "required_entities": [],
+      "confidence_boost": 0.2
     }
   ],
   "entities": {
