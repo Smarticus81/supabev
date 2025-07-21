@@ -14,6 +14,7 @@ import ItemsView from "@/components/items-view"
 import TabsView from "@/components/tabs-view"
 import TransactionsView from "@/components/transactions-view"
 import { VoiceControlButton } from "@/components/voice-control-button"
+import { VoiceDebug } from "@/components/voice-debug"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
 import { useForm } from 'react-hook-form'
@@ -101,24 +102,30 @@ export default function Home() {
         const response = await fetch('/api/voice-cart');
         if (response.ok) {
           const voiceCartData = await response.json();
-          if (voiceCartData.success && voiceCartData.items.length > 0) {
-            // Merge voice cart items with current cart
-            setOrders(prevOrders => {
-              const mergedCart = [...prevOrders];
-              
-              voiceCartData.items.forEach((voiceItem: any) => {
-                const existingIndex = mergedCart.findIndex(item => String(item.id) === String(voiceItem.id));
-                if (existingIndex >= 0) {
-                  // Update existing item with voice cart quantity
-                  mergedCart[existingIndex] = voiceItem;
-                } else {
-                  // Add new item from voice cart
-                  mergedCart.push(voiceItem);
-                }
+          if (voiceCartData.success) {
+            // Always sync with voice cart state (including when empty)
+            if (voiceCartData.items.length === 0) {
+              // Voice cart is empty - clear the main cart
+              setOrders([]);
+            } else {
+              // Merge voice cart items with current cart
+              setOrders(prevOrders => {
+                const mergedCart = [...prevOrders];
+                
+                voiceCartData.items.forEach((voiceItem: any) => {
+                  const existingIndex = mergedCart.findIndex(item => String(item.id) === String(voiceItem.id));
+                  if (existingIndex >= 0) {
+                    // Update existing item with voice cart quantity
+                    mergedCart[existingIndex] = voiceItem;
+                  } else {
+                    // Add new item from voice cart
+                    mergedCart.push(voiceItem);
+                  }
+                });
+                
+                return mergedCart;
               });
-              
-              return mergedCart;
-            });
+            }
           }
         }
       } catch (error) {
@@ -658,6 +665,11 @@ export default function Home() {
           onNavigateToTab={handleNavigateToTab}
           currentTab={currentTab}
         />
+      </div>
+
+      {/* Voice Debug Tool - Temporary */}
+      <div className="fixed bottom-4 left-4 z-50">
+        <VoiceDebug />
       </div>
     </div>
   )

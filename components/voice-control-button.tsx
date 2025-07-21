@@ -141,15 +141,16 @@ export function VoiceControlButton({
   // Wake word detection state
   const [isWakeWordMode, setIsWakeWordMode] = useState(false);
   const [isWaitingForWakeWord, setIsWaitingForWakeWord] = useState(false);
+  
+  // Browser ASR for wake word detection (no speech output)
+  const wakeWordRecognitionRef = useRef<any>(null);
+  const isWaitingForWakeWordRef = useRef<boolean>(false);
 
   // Session management
   const [isStartingSession, setIsStartingSession] = useState(false);
 
   // Auto-return to wake word mode state - REMOVED, now using user-controlled "thanks bev" trigger
 
-  // Fallback ASR state
-  const [usingFallbackASR, setUsingFallbackASR] = useState(false);
-  const fallbackRecognitionRef = useRef<SpeechRecognition | null>(null);
   const wakeWordTimeRef = useRef<number | null>(null); // For latency logging
   const wakeAckAudioRef = useRef<HTMLAudioElement | null>(null); // For wake word sound
 
@@ -1323,16 +1324,28 @@ Remember: Create the perfect illusion of instant response while maintaining natu
           setTranscript(message.transcript);
           console.log('👤 User said:', message.transcript);
           
-          // 🎭 IMMEDIATE SPECULATIVE RESPONSE FOR CART OPERATIONS
+          // 🎭 IMMEDIATE SPECULATIVE RESPONSE FOR CART OPERATIONS - DISABLED
+          // Temporarily disabled until voice matching is configured
+          /*
           const transcript = message.transcript.toLowerCase();
-          if (transcript.includes('add') || transcript.includes('get') || transcript.includes('order') || 
-              transcript.includes('buy') || transcript.includes('purchase') || transcript.includes('cart')) {
+          // More specific detection - only trigger for actual cart addition requests
+          const isAddingToCart = (
+            (transcript.includes('add') && (transcript.includes('to') || transcript.includes('cart'))) ||
+            (transcript.includes('get') && (transcript.includes('me') || transcript.includes('a '))) ||
+            (transcript.includes('order') && (transcript.includes('me') || transcript.includes('a ') || transcript.includes('i want'))) ||
+            (transcript.includes('buy') && transcript.includes('a ')) ||
+            (transcript.includes('purchase') && transcript.includes('a ')) ||
+            (transcript.includes('i want') || transcript.includes('i need') || transcript.includes('can i get') || transcript.includes('could i get'))
+          );
+          
+          if (isAddingToCart) {
             console.log('🎭 Cart operation detected in transcript, playing immediate speculative response');
             playSpeculativeSentence('add_drink_to_cart');
           }
+          */
           
           // Check for terminating phrases to return to wake word mode
-          const lowerTranscript = transcript; // Use the already created transcript variable
+          const lowerTranscript = message.transcript.toLowerCase(); // Use the transcript from message
           // Remove punctuation and normalize spacing
           const cleanTranscript = lowerTranscript.replace(/[.,!?]/g, '').replace(/\s+/g, ' ').trim();
           
@@ -1397,17 +1410,8 @@ Remember: Create the perfect illusion of instant response while maintaining natu
 
       case 'conversation.item.input_audio_transcription.failed':
         console.error('❌ OpenAI Whisper transcription failed:', message.error);
-        setError('Transcription failed - trying backup system...');
-        
-        // Implement fallback ASR using Web Speech API
-        try {
-          console.log('🔄 Falling back to Web Speech API...');
-          await initializeFallbackASR();
-        } catch (fallbackError) {
-          console.error('❌ Fallback ASR also failed:', fallbackError);
-          setError('Voice recognition unavailable. Please check your microphone and try again.');
-          setIsProcessing(false);
-        }
+        setError('Voice recognition failed. Please try speaking again.');
+        setIsProcessing(false);
         break;
 
       case 'response.audio_transcript.delta':
@@ -1501,24 +1505,18 @@ Remember: Create the perfect illusion of instant response while maintaining natu
             // Reset processing and speculative states
             setIsProcessingFunction(false);
             
-            // Check if this was a terminal statement or order processing mention
-            if (result.content && result.content[0] && result.content[0].text) {
-              const responseText = result.content[0].text;
-              
-              // Only mark as terminal for order processing, but don't start timer yet
-              if (currentFunctionCall.current?.name === 'process_order') {
-                console.log('🔄 Order processing completed, clearing cart');
-                
-                // Clear cart state since order is complete
-                setCartItems([]);
-                setCartTotal(0);
-                
-                // Don't start timer here - wait for AI to finish speaking
-              }
-            }
-            
-            // Update cart display if it was a cart operation
-            if (['add_drink_to_cart', 'remove_drink_from_cart', 'show_cart', 'clear_cart', 'process_order'].includes(currentFunctionCall.current?.name || '')) {
+            // Special handling for process_order - clear cart immediately since order is complete
+            if (currentFunctionCall.current?.name === 'process_order') {
+              console.log('🔄 Order processed, clearing cart state immediately');
+              // Clear local cart state immediately for better UX
+              setCartItems([]);
+              setCartTotal(0);
+              // Also update from server to ensure sync, with multiple attempts if needed
+              setTimeout(() => updateCartDisplay(), 100);
+              setTimeout(() => updateCartDisplay(), 500);
+              setTimeout(() => updateCartDisplay(), 1000);
+            } else if (['add_drink_to_cart', 'remove_drink_from_cart', 'show_cart', 'clear_cart'].includes(currentFunctionCall.current?.name || '')) {
+              console.log('🔄 Updating cart display after function:', currentFunctionCall.current?.name);
               updateCartDisplay();
             }
             
@@ -1691,6 +1689,11 @@ Remember: Create the perfect illusion of instant response while maintaining natu
     // Clean up wake word detection
     setIsWakeWordMode(false);
     setIsWaitingForWakeWord(false);
+    isWaitingForWakeWordRef.current = false;
+    if (wakeWordRecognitionRef.current) {
+      wakeWordRecognitionRef.current.stop();
+      wakeWordRecognitionRef.current = null;
+    }
     
     cleanup();
   };
@@ -1706,6 +1709,12 @@ Remember: Create the perfect illusion of instant response while maintaining natu
     
     // Reset speculative state
     audioQueueRef.current = [];
+    
+    // Clean up wake word recognition
+    if (wakeWordRecognitionRef.current) {
+      wakeWordRecognitionRef.current.stop();
+      wakeWordRecognitionRef.current = null;
+    }
     
     if (peerConnectionRef.current) {
       peerConnectionRef.current.close();
@@ -1745,173 +1754,155 @@ Remember: Create the perfect illusion of instant response while maintaining natu
     }
   };
 
-  const initializeFallbackASR = async () => {
-    try {
-      console.log('🔄 Initializing Web Speech API...');
-      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-      if (!SpeechRecognition) {
-        throw new Error('Web Speech API not supported in this browser');
-      }
-
-      const recognition = new SpeechRecognition();
-      recognition.continuous = false;
-      recognition.lang = 'en-US';
-      recognition.interimResults = true;
-      recognition.start();
-
-      fallbackRecognitionRef.current = recognition;
-
-      recognition.onstart = () => {
-        console.log('🎤 Speech recognition started');
-        setUsingFallbackASR(true);
-      };
-
-      recognition.onresult = (event) => {
-        let interimText = '';
-        let finalText = '';
-
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-          if (event.results[i].isFinal) {
-            finalText += event.results[i][0].transcript;
-          } else {
-            interimText += event.results[i][0].transcript;
-          }
-        }
-
-        if (interimText.trim()) {
-          console.log('🗣️ Interim speech:', interimText);
-          setTranscript(prev => prev + interimText);
-        }
-
-        if (finalText.trim()) {
-          console.log('👤 User said:', finalText);
-          setTranscript(finalText);
-          setIsProcessing(false);
-          setUsingFallbackASR(false);
-        }
-      };
-
-      recognition.onend = () => {
-        console.log('🎤 Speech recognition ended');
-        setUsingFallbackASR(false);
-      };
-
-      recognition.onerror = (event) => {
-        console.error('❌ Speech recognition error:', event.error);
-        setError('Voice recognition failed. Please try again.');
-        setIsProcessing(false);
-        setUsingFallbackASR(false);
-      };
-
-    } catch (error) {
-      console.error('❌ Failed to initialize Web Speech API:', error);
-      setError('Voice recognition failed. Please try again.');
-      setIsProcessing(false);
-      setUsingFallbackASR(false);
-    }
-  };
-
   const startWakeWordDetection = async () => {
     try {
       console.log('👂 Starting wake word detection...');
       setIsWaitingForWakeWord(true);
+      isWaitingForWakeWordRef.current = true; // Set ref immediately for synchronous access
       setIsWakeWordMode(true);
       setError(null);
       setTranscript('');
       
-      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-      if (!SpeechRecognition) {
-        throw new Error('Web Speech API not supported in this browser');
-      }
-
-      const recognition = new SpeechRecognition();
-      recognition.continuous = true;
-      recognition.lang = 'en-US';
-      recognition.interimResults = true;
+      // Set up browser Speech Recognition for wake word detection
+      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
       
-      fallbackRecognitionRef.current = recognition;
-
-      recognition.onstart = () => {
-        console.log('👂 Wake word detection started');
+      if (!SpeechRecognition) {
+        console.error('❌ Speech Recognition not supported');
+        setError('Speech recognition not supported in this browser');
+        setIsWaitingForWakeWord(false);
+        isWaitingForWakeWordRef.current = false;
+        setIsWakeWordMode(false);
+        return;
+      }
+      
+      wakeWordRecognitionRef.current = new SpeechRecognition();
+      wakeWordRecognitionRef.current.continuous = true;
+      wakeWordRecognitionRef.current.interimResults = true;
+      wakeWordRecognitionRef.current.lang = 'en-US';
+      
+      wakeWordRecognitionRef.current.onstart = () => {
+        console.log('👂 Wake word detection started successfully');
         setIsWaitingForWakeWord(true);
+        isWaitingForWakeWordRef.current = true;
       };
-
-      recognition.onresult = (event) => {
-        let finalText = '';
+      
+      wakeWordRecognitionRef.current.onresult = (event: any) => {
+        console.log('👂 Wake word recognition got result:', event);
+        console.log('👂 Current isWaitingForWakeWordRef:', isWaitingForWakeWordRef.current);
+        console.log('👂 Current isStartingSession:', isStartingSession);
+        console.log('👂 Current isListening:', isListening);
         
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-          if (event.results[i].isFinal) {
-            finalText += event.results[i][0].transcript;
-          }
+        // Prevent processing if already transitioning or listening to full conversation
+        if (isStartingSession || isListening) {
+          console.log('👂 Skipping result - already starting session or in full conversation');
+          return;
         }
-
-        if (finalText.trim()) {
-          console.log('👂 Heard:', finalText);
-          setTranscript(finalText);
-          
-          // Check for wake word variations
-          const lowerText = finalText.toLowerCase().trim();
-          const wakeWordVariations = [
-            'hey bev',
-            'hey beth',
-            'hey dev',
-            'hey beb',
-            'bev',
-            'hey'
-          ];
-          
-          const isWakeWord = wakeWordVariations.some(variation => 
-            lowerText.includes(variation)
-          );
-          
-          if (isWakeWord) {
-            console.log('🎯 Wake word detected!');
-            wakeWordTimeRef.current = Date.now(); // T0 for latency measurement
-            console.log('🎙️ Wake Word Detected Time (T0): ', wakeWordTimeRef.current);
-
-            playWakeWordAcknowledgement(); // Play immediate local TTS acknowledgement
-
-            // Immediately stop recognition to prevent duplicates
-            recognition.stop();
-            setIsWaitingForWakeWord(false);
-            setIsWakeWordMode(false);
-            
-            // Clear the transcript
-            setTranscript('');
-            
-            // Start full conversation mode
-            startFullConversationMode();
-          }
+        
+        // Only process if we're actively waiting for wake word (use ref for immediate check)
+        if (!isWaitingForWakeWordRef.current) {
+          console.log('👂 Skipping result - not actively waiting for wake word');
+          return;
         }
-      };
-
-      recognition.onend = () => {
-        console.log('👂 Wake word detection ended');
-        if (isWaitingForWakeWord) {
-          // Restart if we're still in wake word mode
-          setTimeout(() => {
-            if (isWakeWordMode) {
-              recognition.start();
-            }
-          }, 100);
-        }
-      };
-
-      recognition.onerror = (event) => {
-        console.error('❌ Wake word detection error:', event.error);
-        if (event.error !== 'no-speech') {
-          setError('Wake word detection failed. Please try again.');
+        
+        const transcript = Array.from(event.results)
+          .map((result: any) => result[0].transcript)
+          .join('')
+          .toLowerCase()
+          .trim();
+        
+        console.log('👂 Wake word transcript:', transcript);
+        
+        // Check for wake words: "hey bev", "bev", "beverage"
+        const wakeWords = ['hey bev', 'bev', 'beverage'];
+        const detectedWakeWord = wakeWords.find(word => transcript.includes(word));
+        
+        if (detectedWakeWord) {
+          console.log('🎯 Wake word detected:', detectedWakeWord);
+          wakeWordTimeRef.current = Date.now();
+          
+          // Immediately set flags to prevent duplicate triggering
           setIsWaitingForWakeWord(false);
+          isWaitingForWakeWordRef.current = false; // Update ref immediately
+          setIsStartingSession(true);
+          
+          // Stop wake word recognition immediately
+          if (wakeWordRecognitionRef.current) {
+            wakeWordRecognitionRef.current.stop();
+            wakeWordRecognitionRef.current = null;
+          }
+          
+          // Play wake acknowledgment sound (no speech output from browser)
+          if (wakeAckAudioRef.current) {
+            wakeAckAudioRef.current.currentTime = 0;
+            wakeAckAudioRef.current.play().catch(error => {
+              console.warn('⚠️ Could not play wake ack sound:', error);
+            });
+          }
+          
+          // Start full conversation mode
+          setTimeout(() => {
+            startFullConversationMode();
+          }, 500); // Small delay to let wake ack sound play
+        }
+      };
+      
+      wakeWordRecognitionRef.current.onerror = (event: any) => {
+        console.error('❌ Wake word recognition error:', event.error);
+        if (event.error !== 'no-speech') {
+          setError('Wake word detection error. Please try again.');
+          setIsWaitingForWakeWord(false);
+          isWaitingForWakeWordRef.current = false;
           setIsWakeWordMode(false);
         }
       };
-
-      recognition.start();
-
+      
+      wakeWordRecognitionRef.current.onend = () => {
+        console.log('👂 Wake word recognition ended');
+        // If we're still in wake word mode and not transitioning, restart
+        if (isWakeWordMode && !isStartingSession && !isListening) {
+          setTimeout(() => {
+            if (isWakeWordMode && !isStartingSession && !isListening) {
+              console.log('🔄 Restarting wake word recognition');
+              try {
+                // Reset the waiting state before restarting
+                setIsWaitingForWakeWord(true);
+                
+                // Create new recognition instance
+                const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+                if (SpeechRecognition) {
+                  wakeWordRecognitionRef.current = new SpeechRecognition();
+                  wakeWordRecognitionRef.current.continuous = true;
+                  wakeWordRecognitionRef.current.interimResults = true;
+                  wakeWordRecognitionRef.current.lang = 'en-US';
+                  
+                  // Re-attach event handlers
+                  wakeWordRecognitionRef.current.onstart = () => {
+                    console.log('� Wake word detection restarted');
+                    setIsWaitingForWakeWord(true);
+                  };
+                  wakeWordRecognitionRef.current.onresult = arguments[0]; // Use same handler
+                  wakeWordRecognitionRef.current.onerror = arguments[1]; // Use same error handler
+                  wakeWordRecognitionRef.current.onend = arguments[2]; // Use same end handler
+                  
+                  wakeWordRecognitionRef.current.start();
+                }
+              } catch (error) {
+                console.warn('⚠️ Could not restart wake word recognition:', error);
+              }
+            }
+          }, 500);
+        }
+      };
+      
+      // Start the recognition
+      console.log('👂 Starting speech recognition...');
+      wakeWordRecognitionRef.current.start();
+      
     } catch (error) {
       console.error('❌ Failed to start wake word detection:', error);
       setError('Wake word detection failed. Please try again.');
       setIsWaitingForWakeWord(false);
+      isWaitingForWakeWordRef.current = false;
       setIsWakeWordMode(false);
     }
   };
@@ -1926,12 +1917,6 @@ Remember: Create the perfect illusion of instant response while maintaining natu
       
       setIsStartingSession(true);
       console.log('🚀 Starting full conversation mode...');
-      
-      // Stop any existing wake word detection
-      if (fallbackRecognitionRef.current) {
-        fallbackRecognitionRef.current.stop();
-        fallbackRecognitionRef.current = null;
-      }
       
       // Start the full OpenAI Realtime conversation first
       await startListening();
@@ -2035,9 +2020,13 @@ Remember: Create the perfect illusion of instant response while maintaining natu
   };
 
   const playSpeculativeSentence = (functionName: string) => {
-    // Only play speculative speech if connected
-    if (!isConnected || !peerConnectionRef.current) {
-      console.log('⚠️ Speculative speech not played: not connected');
+    // 🔇 SPECULATIVE SPEECH DISABLED - Temporarily disabled until voice matching is configured
+    console.log(`🔇 Speculative speech disabled for ${functionName}`);
+    return;
+    
+    // Check if WebRTC connection exists (more lenient check)
+    if (!peerConnectionRef.current || peerConnectionRef.current.connectionState === 'closed' || peerConnectionRef.current.connectionState === 'failed') {
+      console.log('⚠️ Speculative speech not played: no valid connection');
       return;
     }
     const sentence = getSpeculativeSentence(functionName);
@@ -2282,11 +2271,25 @@ Remember: Create the perfect illusion of instant response while maintaining natu
         const mcpResult = await response.json();
         console.log('🛒 MCP cart data:', mcpResult);
         
-        if (mcpResult.content && mcpResult.content[0] && mcpResult.content[0].text) {
-          const cartText = mcpResult.content[0].text;
+        // Handle both MCP result formats
+        let cartText = '';
+        if (mcpResult.result && mcpResult.result.content && mcpResult.result.content[0]) {
+          cartText = mcpResult.result.content[0].text;
+        } else if (mcpResult.content && mcpResult.content[0]) {
+          cartText = mcpResult.content[0].text;
+        }
+        
+        if (cartText) {
           const lines = cartText.split('\n');
           const items = [];
           let total = 0;
+          
+          // Check if cart is explicitly empty
+          if (cartText.toLowerCase().includes('empty') || cartText.toLowerCase().includes('no items')) {
+            setCartItems([]);
+            setCartTotal(0);
+            return;
+          }
           
           for (const line of lines) {
             const itemMatch = line.match(/(\d+)x\s+(.+?)\s+-\s+\$(\d+\.\d+)/);
@@ -2306,17 +2309,18 @@ Remember: Create the perfect illusion of instant response while maintaining natu
               total = parseFloat(totalMatch[1]);
             }
           }
+          
           setCartItems(items);
           setCartTotal(total);
         } else {
+          // No cart text found, cart is empty
           setCartItems([]);
           setCartTotal(0);
         }
       }
     } catch (error) {
       console.error('Error updating cart display:', error);
-      setCartItems([]);
-      setCartTotal(0);
+      // Don't clear cart on error, keep current state
     }
   };
 

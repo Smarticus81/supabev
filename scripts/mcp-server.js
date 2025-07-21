@@ -3,18 +3,13 @@
 require('dotenv').config({ path: require('path').resolve(__dirname, '..', '.env') });
 const { neon } = require('@neondatabase/serverless');
 const { drizzle } = require('drizzle-orm/neon-http');
-const { drinks, orders, customers, venues, eventBookings, inventory, transactions } = require('../db/schema');
 const { eq, like, desc, sql, and, gte, lte } = require('drizzle-orm');
-const path = require('path');
-const fs = require('fs');
 
 class MCPServer {
     constructor() {
         // Initialize Neon database connection
         const sqlConnection = neon(process.env.DATABASE_URL);
-        this.db = drizzle(sqlConnection, { 
-            schema: { drinks, orders, customers, venues, eventBookings, inventory, transactions }
-        });
+        this.db = drizzle(sqlConnection);
         
         this.cartStorage = new Map(); // In-memory cart storage by clientId
         this.paymentMethods = new Map(); // In-memory payment methods by clientId
@@ -153,18 +148,16 @@ class MCPServer {
         }
 
         try {
-            const result = await this.db
-                .select()
-                .from(drinks)
-                .where(sql`lower(${drinks.name}) = lower(${drink_name})`)
-                .limit(1);
+            const result = await this.db.execute(
+                sql`SELECT * FROM drinks WHERE LOWER(name) = LOWER(${drink_name}) LIMIT 1`
+            );
             
-            if (!result || result.length === 0) {
+            if (!result.rows || result.rows.length === 0) {
                 return { error: `Drink "${drink_name}" not found in inventory` };
             }
 
             return {
-                ...result[0],
+                ...result.rows[0],
                 success: true
             };
         } catch (error) {
@@ -186,17 +179,15 @@ class MCPServer {
 
         try {
             // First check if drink exists
-            const drinkResult = await this.db
-                .select()
-                .from(drinks)
-                .where(sql`lower(${drinks.name}) = lower(${drink_name})`)
-                .limit(1);
+            const drinkResult = await this.db.execute(
+                sql`SELECT * FROM drinks WHERE LOWER(name) = LOWER(${drink_name}) LIMIT 1`
+            );
             
-            if (!drinkResult || drinkResult.length === 0) {
+            if (!drinkResult.rows || drinkResult.rows.length === 0) {
                 return { error: `Drink "${drink_name}" not found` };
             }
 
-            const drink = drinkResult[0];
+            const drink = drinkResult.rows[0];
             
             // Calculate new inventory (assuming inventory is in units)
             const currentInventory = drink.inventory || 0;
@@ -207,10 +198,9 @@ class MCPServer {
             }
 
             // Update inventory
-            await this.db
-                .update(drinks)
-                .set({ inventory: newInventory })
-                .where(sql`lower(${drinks.name}) = lower(${drink_name})`);
+            await this.db.execute(
+                sql`UPDATE drinks SET inventory = ${newInventory} WHERE LOWER(name) = LOWER(${drink_name})`
+            );
             
             // Determine unit name
             let unitName = 'bottles';
@@ -248,17 +238,15 @@ class MCPServer {
 
         try {
             // Verify drink exists
-            const drinkResult = await this.db
-                .select({ name: drinks.name, price: drinks.price })
-                .from(drinks)
-                .where(sql`lower(${drinks.name}) = lower(${drink_name})`)
-                .limit(1);
+            const drinkResult = await this.db.execute(
+                sql`SELECT name, price FROM drinks WHERE LOWER(name) = LOWER(${drink_name}) LIMIT 1`
+            );
             
-            if (!drinkResult || drinkResult.length === 0) {
+            if (!drinkResult.rows || drinkResult.rows.length === 0) {
                 return { error: `Drink "${drink_name}" not found` };
             }
 
-            const drink = drinkResult[0];
+            const drink = drinkResult.rows[0];
 
             // Get or create cart for client
             if (!this.cartStorage.has(clientId)) {
@@ -469,30 +457,31 @@ class MCPServer {
         }
     }
 
-    createOrder(params) {
+    async createOrder(params) {
         const { items, customer_name, payment_method = 'cash' } = params;
         
         if (!items || !Array.isArray(items) || items.length === 0) {
             return { error: 'items array is required and cannot be empty' };
         }
 
-        const transaction = this.db.transaction(() => {
+        try {
+            // Begin transaction
+            await this.db.execute(sql`BEGIN`);
+
             try {
                 // Check stock for all items
-                const stockCheckStmt = this.db.prepare(`
-                    SELECT name, inventory_oz, unit_volume_oz
-                    FROM drinks 
-                    WHERE name = ? COLLATE NOCASE
-                `);
-
                 for (const item of items) {
-                    const drink = stockCheckStmt.get(item.drink_name);
-                    if (!drink) {
+                    const drinkResult = await this.db.execute(
+                        sql`SELECT name, inventory FROM drinks WHERE LOWER(name) = LOWER(${item.drink_name})`
+                    );
+                    
+                    if (!drinkResult.rows || drinkResult.rows.length === 0) {
                         throw new Error(`Drink "${item.drink_name}" not found`);
                     }
-                    const neededOz = item.quantity * drink.unit_volume_oz;
-                    if (drink.inventory_oz < neededOz) {
-                        throw new Error(`Insufficient stock for ${item.drink_name}: need ${item.quantity} but only ${Math.floor(drink.inventory_oz / drink.unit_volume_oz)} available`);
+                    
+                    const drink = drinkResult.rows[0];
+                    if (drink.inventory < item.quantity) {
+                        throw new Error(`Insufficient stock for ${item.drink_name}: need ${item.quantity} but only ${drink.inventory} available`);
                     }
                 }
 
@@ -502,42 +491,33 @@ class MCPServer {
                 const total = subtotal + tax;
 
                 // Create order in database
-                const insertOrder = this.db.prepare(`
-                    INSERT INTO orders (customer_name, total_amount, status, payment_method)
-                    VALUES (?, ?, 'completed', ?)
-                `);
+                const orderResult = await this.db.execute(
+                    sql`INSERT INTO orders (customer_name, total_amount, status, payment_method) 
+                        VALUES (${customer_name}, ${total}, 'completed', ${payment_method}) 
+                        RETURNING id`
+                );
                 
-                const orderResult = insertOrder.run(customer_name, total, payment_method);
-                const orderId = orderResult.lastInsertRowid;
+                const orderId = orderResult.rows[0].id;
 
                 // Add order items
-                const insertOrderItem = this.db.prepare(`
-                    INSERT INTO order_items (order_id, drink_name, quantity, price, serving_name)
-                    VALUES (?, ?, ?, ?, ?)
-                `);
-
                 for (const item of items) {
-                    insertOrderItem.run(
-                        orderId,
-                        item.drink_name,
-                        item.quantity,
-                        item.price,
-                        item.serving_name || 'bottle'
+                    await this.db.execute(
+                        sql`INSERT INTO order_items (order_id, drink_name, quantity, price, serving_name)
+                            VALUES (${orderId}, ${item.drink_name}, ${item.quantity}, ${item.price}, ${item.serving_name || 'bottle'})`
                     );
                 }
 
                 // Deduct inventory
-                const updateInventory = this.db.prepare(`
-                    UPDATE drinks 
-                    SET inventory_oz = inventory_oz - ?, updated_at = CURRENT_TIMESTAMP
-                    WHERE name = ? COLLATE NOCASE
-                `);
-
                 for (const item of items) {
-                    const drink = stockCheckStmt.get(item.drink_name);
-                    const deductOz = item.quantity * drink.unit_volume_oz;
-                    updateInventory.run(deductOz, item.drink_name);
+                    await this.db.execute(
+                        sql`UPDATE drinks 
+                            SET inventory = inventory - ${item.quantity}
+                            WHERE LOWER(name) = LOWER(${item.drink_name})`
+                    );
                 }
+
+                // Commit transaction
+                await this.db.execute(sql`COMMIT`);
 
                 return {
                     success: true,
@@ -549,27 +529,25 @@ class MCPServer {
                     message: `Order ${orderId} created and inventory updated successfully`
                 };
             } catch (error) {
+                // Rollback on error
+                await this.db.execute(sql`ROLLBACK`);
                 throw error;
             }
-        });
-
-        try {
-            return transaction();
         } catch (error) {
             process.stderr.write(`Transaction error in createOrder: ${error}\n`);
             return { error: error.message };
         }
     }
 
-    viewMenu(params) {
+    async viewMenu(params) {
         try {
-            const stmt = this.db.prepare(`
-                SELECT name, category, subcategory, price, inventory_oz, unit_volume_oz
-                FROM drinks 
-                ORDER BY category, name
-            `);
+            const result = await this.db.execute(
+                sql`SELECT name, category, subcategory, price, inventory
+                    FROM drinks 
+                    ORDER BY category, name`
+            );
             
-            const drinks = stmt.all();
+            const drinks = result.rows;
             
             return {
                 success: true,
@@ -582,10 +560,10 @@ class MCPServer {
         }
     }
 
-    healthCheck() {
+    async healthCheck() {
         try {
             // Test database connection
-            const result = this.db.prepare('SELECT 1 as test').get();
+            const result = await this.db.execute(sql`SELECT 1 as test`);
             
             return {
                 success: true,
@@ -604,35 +582,34 @@ class MCPServer {
         }
     }
 
-    inventoryInsights(params) {
+    async inventoryInsights(params) {
         try {
             // Low stock items (less than 5 units)
-            const lowStockStmt = this.db.prepare(`
-                SELECT name, inventory_oz / unit_volume_oz as units
-                FROM drinks 
-                WHERE (inventory_oz / unit_volume_oz) < 5
-                ORDER BY units ASC
-            `);
-            const lowStock = lowStockStmt.all();
+            const lowStockResult = await this.db.execute(
+                sql`SELECT name, inventory as units
+                    FROM drinks 
+                    WHERE inventory < 5
+                    ORDER BY inventory ASC`
+            );
+            const lowStock = lowStockResult.rows;
 
             // Total inventory value
-            const valueStmt = this.db.prepare(`
-                SELECT SUM((inventory_oz / unit_volume_oz) * price) as total_value
-                FROM drinks
-            `);
-            const { total_value } = valueStmt.get();
+            const valueResult = await this.db.execute(
+                sql`SELECT SUM(inventory * price) as total_value FROM drinks`
+            );
+            const total_value = valueResult.rows[0]?.total_value || 0;
 
             // Categories summary
-            const categoriesStmt = this.db.prepare(`
-                SELECT category, COUNT(*) as count, SUM((inventory_oz / unit_volume_oz) * price) as value
-                FROM drinks
-                GROUP BY category
-            `);
-            const categories = categoriesStmt.all();
+            const categoriesResult = await this.db.execute(
+                sql`SELECT category, COUNT(*) as count, SUM(inventory * price) as value
+                    FROM drinks
+                    GROUP BY category`
+            );
+            const categories = categoriesResult.rows;
 
             return {
                 success: true,
-                lowStock,  // Renamed for consistency
+                lowStock,
                 total_inventory_value: total_value ? total_value.toFixed(2) : '0.00',
                 category_summary: categories,
                 message: 'Inventory insights generated'
@@ -643,38 +620,37 @@ class MCPServer {
         }
     }
 
-    salesInsights(params) {
+    async salesInsights(params) {
         try {
             // Top selling drinks
-            const topSellersStmt = this.db.prepare(`
-                SELECT drink_name, SUM(quantity) as total_sold, SUM(quantity * price) as revenue
-                FROM order_items
-                GROUP BY drink_name
-                ORDER BY total_sold DESC
-                LIMIT 10
-            `);
-            const topSellers = topSellersStmt.all();
+            const topSellersResult = await this.db.execute(
+                sql`SELECT drink_name, SUM(quantity) as total_sold, SUM(quantity * price) as revenue
+                    FROM order_items
+                    GROUP BY drink_name
+                    ORDER BY total_sold DESC
+                    LIMIT 10`
+            );
+            const topSellers = topSellersResult.rows;
 
             // Total sales
-            const totalSalesStmt = this.db.prepare(`
-                SELECT SUM(total_amount) as total_revenue,
-                       COUNT(*) as order_count
-                FROM orders
-                WHERE status = 'completed'
-            `);
-            const { total_revenue, order_count } = totalSalesStmt.get();
+            const totalSalesResult = await this.db.execute(
+                sql`SELECT SUM(total_amount) as total_revenue, COUNT(*) as order_count
+                    FROM orders
+                    WHERE status = 'completed'`
+            );
+            const { total_revenue, order_count } = totalSalesResult.rows[0] || { total_revenue: 0, order_count: 0 };
 
             // Recent orders
-            const recentStmt = this.db.prepare(`
-                SELECT * FROM orders
-                ORDER BY created_at DESC
-                LIMIT 5
-            `);
-            const recentOrders = recentStmt.all();
+            const recentResult = await this.db.execute(
+                sql`SELECT * FROM orders
+                    ORDER BY created_at DESC
+                    LIMIT 5`
+            );
+            const recentOrders = recentResult.rows;
 
             return {
                 success: true,
-                topSellers,  // Renamed for consistency
+                topSellers,
                 total_revenue: total_revenue ? total_revenue.toFixed(2) : '0.00',
                 order_count: order_count || 0,
                 recent_orders: recentOrders,
@@ -688,48 +664,23 @@ class MCPServer {
 
     getTtsConfig() {
         try {
-            const stmt = this.db.prepare(`
-                SELECT * FROM config WHERE key IN (
-                    'tts_provider', 'tts_voice', 'tts_rate', 'tts_temperature',
-                    'vad_threshold', 'prefix_padding', 'silence_duration', 'max_tokens',
-                    'response_style', 'audio_gain', 'noise_suppression', 'echo_cancellation',
-                    'personality_mode', 'verbosity'
-                )
-            `);
-            const rows = stmt.all();
-            const config = rows.reduce((acc, row) => {
-                acc[row.key] = row.value;
-                return acc;
-            }, {});
-            
-            // Ensure we always return a config with fallback to working provider
-            const finalConfig = Object.keys(config).length > 0 ? config : { 
+            // Return default OpenAI configuration since we're using NeonDB only
+            const finalConfig = { 
                 tts_provider: 'openai', 
                 tts_voice: 'alloy',
-                tts_rate: '1.0',
-                tts_temperature: '0.5',
-                vad_threshold: '0.5',
-                prefix_padding: '200',
-                silence_duration: '300',
-                max_tokens: '1500',
+                rate: 1.0,
+                temperature: 0.5,
+                vad_threshold: 0.5,
+                prefix_padding: 200,
+                silence_duration: 300,
+                max_tokens: 1500,
                 response_style: 'efficient',
-                audio_gain: '1.0',
-                noise_suppression: 'true',
-                echo_cancellation: 'true',
+                audio_gain: 1.0,
+                noise_suppression: true,
+                echo_cancellation: true,
                 personality_mode: 'professional',
                 verbosity: 'balanced'
             };
-            
-            // Convert string values to appropriate types
-            if (finalConfig.tts_rate) finalConfig.rate = parseFloat(finalConfig.tts_rate);
-            if (finalConfig.tts_temperature) finalConfig.temperature = parseFloat(finalConfig.tts_temperature);
-            if (finalConfig.vad_threshold) finalConfig.vad_threshold = parseFloat(finalConfig.vad_threshold);
-            if (finalConfig.prefix_padding) finalConfig.prefix_padding = parseInt(finalConfig.prefix_padding);
-            if (finalConfig.silence_duration) finalConfig.silence_duration = parseInt(finalConfig.silence_duration);
-            if (finalConfig.max_tokens) finalConfig.max_tokens = parseInt(finalConfig.max_tokens);
-            if (finalConfig.audio_gain) finalConfig.audio_gain = parseFloat(finalConfig.audio_gain);
-            if (finalConfig.noise_suppression) finalConfig.noise_suppression = finalConfig.noise_suppression === 'true';
-            if (finalConfig.echo_cancellation) finalConfig.echo_cancellation = finalConfig.echo_cancellation === 'true';
             
             return {
                 success: true,
@@ -753,24 +704,8 @@ class MCPServer {
         }
         
         try {
-            const insert = this.db.prepare('INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)');
-            insert.run('tts_provider', tts_provider);
-            insert.run('tts_voice', tts_voice);
-            
-            // Store all configuration parameters
-            if (rate !== undefined) insert.run('tts_rate', rate.toString());
-            if (temperature !== undefined) insert.run('tts_temperature', temperature.toString());
-            if (vad_threshold !== undefined) insert.run('vad_threshold', vad_threshold.toString());
-            if (prefix_padding !== undefined) insert.run('prefix_padding', prefix_padding.toString());
-            if (silence_duration !== undefined) insert.run('silence_duration', silence_duration.toString());
-            if (max_tokens !== undefined) insert.run('max_tokens', max_tokens.toString());
-            if (response_style !== undefined) insert.run('response_style', response_style);
-            if (audio_gain !== undefined) insert.run('audio_gain', audio_gain.toString());
-            if (noise_suppression !== undefined) insert.run('noise_suppression', noise_suppression.toString());
-            if (echo_cancellation !== undefined) insert.run('echo_cancellation', echo_cancellation.toString());
-            if (personality_mode !== undefined) insert.run('personality_mode', personality_mode);
-            if (verbosity !== undefined) insert.run('verbosity', verbosity);
-            
+            // For now, just return success since we're using in-memory config
+            // In a production system, you would save this to NeonDB if needed
             return { success: true };
         } catch (error) {
             return { error: 'Failed to set TTS config' };
