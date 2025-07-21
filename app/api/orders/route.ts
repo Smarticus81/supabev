@@ -1,66 +1,40 @@
-const { getDb } = require('../../../lib/db');
-const fs = require('fs');
-import path from 'path';
-const Database = require('better-sqlite3');
-const path = require('path');
+import db from '../../../db/index';
+import { orders, drinks } from '../../../db/schema';
+import { desc, eq } from 'drizzle-orm';
 
 export async function GET() {
-  let db;
   try {
-    // Use the same database as MCP server
-    const dbPath = path.join(process.cwd(), 'data', 'bar.db');
-    db = new Database(dbPath, { readonly: true });
-    
-    // Get orders with items from MCP database
-    const orders = db.prepare(`
-      SELECT 
-        id,
-        customer_name,
-        total_amount,
-        status,
-        created_at
-      FROM orders 
-      ORDER BY created_at DESC
-      LIMIT 50
-    `).all();
+    // Get orders from Neon database
+    const allOrders = await db.select().from(orders).orderBy(desc(orders.created_at)).limit(50);
 
-    // Get order items for each order
-    const ordersWithItems = orders.map(order => {
-      const items = db.prepare(`
-        SELECT 
-          drink_name,
-          quantity,
-          price,
-          serving_name
-        FROM order_items 
-        WHERE order_id = ?
-      `).all(order.id);
-
-      // Format items for display
-      const formattedItems = items.map(item => 
-        `${item.drink_name} x${item.quantity}`
+    // Format orders for display
+    const formattedOrders = allOrders.map(order => {
+      const items = JSON.parse(order.items);
+      const formattedItems = items.map((item: any) => 
+        `${item.name} x${item.quantity}`
       );
 
-      // Calculate subtotal and tax
-      const subtotal = parseFloat(order.total_amount) / 1.08; // Remove 8% tax
-      const tax = parseFloat(order.total_amount) - subtotal;
+      // Calculate subtotal and tax (assuming 8.25% tax rate)
+      const total = order.total / 100; // Convert from cents to dollars
+      const subtotal = total / 1.0825; // Remove 8.25% tax
+      const tax = total - subtotal;
 
       return {
         id: `TXN-${order.id.toString().padStart(3, '0')}`,
-        customerName: order.customer_name || 'Guest',
+        customerName: 'Guest', // Default since we don't store customer name in orders yet
         items: formattedItems,
-        total: parseFloat(order.total_amount),
+        total: total,
         tax: tax,
         subtotal: subtotal,
-        paymentMethod: 'Credit Card', // Default since we don't store this yet
-        status: order.status || 'completed',
-        timestamp: new Date(order.created_at).toLocaleString(),
+        paymentMethod: 'Credit Card', // Default
+        status: order.status,
+        timestamp: new Date(order.created_at || '').toLocaleString(),
         server: 'Bev AI', // Default server name
         rawItems: items // Include raw items for detailed view
       };
     });
 
-    return new Response(JSON.stringify(ordersWithItems), {
+    return new Response(JSON.stringify(formattedOrders), {
       status: 200,
       headers: { "Content-Type": "application/json" },
     });
@@ -70,61 +44,58 @@ export async function GET() {
       status: 500,
       headers: { "Content-Type": "application/json" },
     });
-  } finally {
-    if (db) {
-      db.close();
-    }
   }
 }
 
 export async function POST(request: Request) {
-  let db;
   try {
-    db = await getDb();
-    const order = await request.json();
+    const orderData = await request.json();
+    console.log('Received order data:', orderData);
 
-    db.exec("BEGIN TRANSACTION;");
+    // Validate the order data
+    if (!orderData.items || orderData.items.length === 0) {
+      return new Response(JSON.stringify({ error: 'Order must contain items' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
 
-    const orderStmt = db.prepare("INSERT INTO orders (customer_name, total) VALUES (?, ?)");
-    orderStmt.run(order.customerName || 'Guest', order.total);
-    const orderId = db.exec("SELECT last_insert_rowid();")[0].values[0][0];
-    orderStmt.free();
+    // Calculate total in cents
+    const totalInCents = Math.round(orderData.total * 100);
 
-    const updateStmt = db.prepare("UPDATE drinks SET inventory_oz = inventory_oz - ?, sales_servings = sales_servings + ? WHERE id = ?");
-    const insertStmt = db.prepare("INSERT INTO order_items (order_id, serving_option_id, quantity, price) VALUES (?, ?, ?, ?)");
-    const servingStmt = db.prepare("SELECT drink_id, volume_oz FROM serving_options WHERE id = ?");
+    // Create the order
+    const [newOrder] = await db.insert(orders).values({
+      items: JSON.stringify(orderData.items),
+      total: totalInCents,
+      status: 'completed'
+    }).returning();
 
-    for (const item of order.items) {
-      insertStmt.run(orderId, item.serving_option_id, item.quantity, item.price);
+    // Update inventory for each item
+    for (const item of orderData.items) {
+      // Find the drink by name (since UI sends drink names)
+      const [drink] = await db.select().from(drinks).where(eq(drinks.name, item.name)).limit(1);
       
-      const servingInfo = servingStmt.get([item.serving_option_id]);
-      if (servingInfo) {
-        const [drinkId, volumeToDeduct] = servingInfo;
-        const totalVolumeDeducted = volumeToDeduct * item.quantity;
-        updateStmt.run(totalVolumeDeducted, item.quantity, drinkId);
+      if (drink) {
+        // Decrease inventory
+        await db.update(drinks)
+          .set({ inventory: Math.max(0, drink.inventory - item.quantity) })
+          .where(eq(drinks.id, drink.id));
       }
     }
 
-    servingStmt.free();
-    updateStmt.free();
-    insertStmt.free();
-    
-    db.exec("COMMIT;");
-    
-    const data = db.export();
-    const dbPath = path.join(process.cwd(), 'db', 'beverage-pos.sqlite');
-    fs.writeFileSync(dbPath, Buffer.from(data));
-
-    return new Response(JSON.stringify({ success: true, orderId }), {
+    return new Response(JSON.stringify({ 
+      success: true, 
+      orderId: newOrder.id,
+      message: 'Order completed successfully'
+    }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
     });
   } catch (error) {
     console.error('Failed to process order:', error);
-    if(db) db.exec("ROLLBACK;");
     return new Response(JSON.stringify({ error: 'Failed to process order' }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' },
     });
   }
-} 
+}

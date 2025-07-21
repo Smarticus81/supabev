@@ -40,7 +40,7 @@ export async function GET(request: Request) {
     } else if (provider === 'hume') {
       try {
         const hume = new HumeClient({ apiKey: process.env.HUME_API_KEY })
-        const response: any = await hume.tts.voices.list()
+        const response: any = await hume.tts.voices.list({ body: {} })
         voices = (response.voices || []).map((v: any) => ({ id: v.id || v.name, name: v.name }))
       } catch (err) {
         console.warn('Hume API error, using fallback voices', err)

@@ -1,34 +1,86 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Input } from "@/components/ui/input"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Receipt, Search, Download, TrendingUp, DollarSign, CreditCard, RefreshCw } from "lucide-react"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
+import { 
+  Search, 
+  Calendar, 
+  DollarSign, 
+  ShoppingCart, 
+  TrendingUp,
+  Eye,
+  Printer,
+  Download,
+  RefreshCw
+} from "lucide-react"
 
 export default function TransactionsView() {
   const [searchQuery, setSearchQuery] = useState("")
-  const [filterStatus, setFilterStatus] = useState("all")
+  const [activeTab, setActiveTab] = useState("all")
   const [transactions, setTransactions] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [sortBy, setSortBy] = useState("date")
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc")
   const [lastUpdated, setLastUpdated] = useState(new Date())
 
-  // Fetch transactions from API
+  // Add functions for transaction actions
+  const viewTransactionDetails = (transaction: any) => {
+    alert(`Transaction Details:\n\nID: ${transaction.id}\nCustomer: ${transaction.customer_name || 'Walk-in Customer'}\nItems: ${transaction.items?.length || 0}\nTotal: $${transaction.total?.toFixed(2) || '0.00'}\nDate: ${new Date(transaction.created_at).toLocaleString()}`)
+  }
+
+  const printReceipt = (transaction: any) => {
+    // Create a simple receipt format
+    const receiptContent = `
+      RECEIPT
+      ================
+      Transaction ID: ${transaction.id}
+      Customer: ${transaction.customer_name || 'Walk-in Customer'}
+      Date: ${new Date(transaction.created_at).toLocaleString()}
+      
+      ITEMS:
+      ${transaction.items?.map((item: any) => `${item.name} - $${item.price?.toFixed(2) || '0.00'}`).join('\n') || 'No items'}
+      
+      TOTAL: $${transaction.total?.toFixed(2) || '0.00'}
+      ================
+    `
+    
+    // In a real app, you would send this to a printer
+    console.log('Printing receipt:', receiptContent)
+    alert('Receipt sent to printer!\n\n' + receiptContent)
+  }
+
+  useEffect(() => {
+    fetchTransactions()
+  }, [])
+
+  // Update timestamp when transactions data changes
+  useEffect(() => {
+    setLastUpdated(new Date())
+  }, [transactions])
+
   const fetchTransactions = async () => {
     try {
-      setIsLoading(true)
       const response = await fetch("/api/orders")
       const data = await response.json()
+      console.log("Raw API response:", data)
       
-      if (Array.isArray(data)) {
-        setTransactions(data)
-        setLastUpdated(new Date())
-      } else {
-        console.error("Invalid transactions data:", data)
-        setTransactions([])
-      }
+      const ordersArray = Array.isArray(data) ? data : (data.orders || [])
+      console.log("Orders array:", ordersArray)
+      
+      setTransactions(ordersArray)
     } catch (error) {
       console.error("Error fetching transactions:", error)
       setTransactions([])
@@ -37,66 +89,128 @@ export default function TransactionsView() {
     }
   }
 
-  // Load transactions on component mount
-  useEffect(() => {
-    fetchTransactions()
-  }, [])
+  const filteredTransactions = useMemo(() => {
+    let result = transactions
 
-  // Listen for inventory updates (which means orders were processed)
-  useEffect(() => {
-    const handleInventoryUpdate = () => {
-      // Refresh transactions when inventory updates (orders completed)
-      fetchTransactions()
+    if (searchQuery) {
+      result = result.filter(transaction =>
+        transaction.id?.toString().includes(searchQuery) ||
+        transaction.customer_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        transaction.items?.some((item: any) => 
+          item.name?.toLowerCase().includes(searchQuery.toLowerCase())
+        )
+      )
     }
 
-    window.addEventListener('inventoryUpdated', handleInventoryUpdate)
-    return () => {
-      window.removeEventListener('inventoryUpdated', handleInventoryUpdate)
+    if (activeTab !== "all") {
+      const now = new Date()
+      switch (activeTab) {
+        case "today":
+          result = result.filter(transaction => {
+            const transactionDate = new Date(transaction.created_at)
+            return transactionDate.toDateString() === now.toDateString()
+          })
+          break
+        case "week":
+          const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
+          result = result.filter(transaction => {
+            const transactionDate = new Date(transaction.created_at)
+            return transactionDate >= weekAgo
+          })
+          break
+        case "month":
+          const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+          result = result.filter(transaction => {
+            const transactionDate = new Date(transaction.created_at)
+            return transactionDate >= monthAgo
+          })
+          break
+      }
     }
-  }, [])
 
-  // Refresh transactions
-  const handleRefresh = () => {
-    fetchTransactions()
+    // Enhanced sorting with direction
+    result.sort((a, b) => {
+      let compare = 0
+      switch (sortBy) {
+        case "date":
+          compare = new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+          break
+        case "total":
+          compare = (a.total || 0) - (b.total || 0)
+          break
+        case "customer":
+          compare = (a.customer_name || "").localeCompare(b.customer_name || "")
+          break
+        case "items":
+          compare = (a.items?.length || 0) - (b.items?.length || 0)
+          break
+      }
+      return sortDirection === "asc" ? compare : -compare
+    })
+
+    return result
+  }, [transactions, searchQuery, activeTab, sortBy, sortDirection])
+
+  const handleSort = (column: string) => {
+    if (sortBy === column) {
+      setSortDirection(prev => prev === "asc" ? "desc" : "asc")
+    } else {
+      setSortBy(column)
+      setSortDirection("asc")
+    }
   }
 
-  const filteredTransactions = transactions.filter((txn: any) => {
-    const matchesSearch =
-      txn.customerName.toLowerCase().includes(searchQuery.toLowerCase()) || txn.id.includes(searchQuery)
-    const matchesFilter = filterStatus === "all" || txn.status === filterStatus
-    return matchesSearch && matchesFilter
-  })
+  const stats = useMemo(() => {
+    const total = filteredTransactions.reduce((sum, t) => sum + (t.total || 0), 0)
+    const avgOrder = filteredTransactions.length > 0 ? total / filteredTransactions.length : 0
+    const totalOrders = filteredTransactions.length
 
-  const totalRevenue = transactions.filter((txn: any) => txn.status === "completed").reduce((sum, txn) => sum + txn.total, 0)
-  const totalTransactions = transactions.length
-  const completedTransactions = transactions.filter((txn: any) => txn.status === "completed")
-  const avgTransaction = completedTransactions.length > 0 ? totalRevenue / completedTransactions.length : 0
+    return {
+      totalRevenue: total,
+      averageOrder: avgOrder,
+      totalOrders: totalOrders
+    }
+  }, [filteredTransactions])
 
-  const statusColors: { [key: string]: string } = {
-    "completed": "bg-green-100 text-green-800",
-    "pending": "bg-yellow-100 text-yellow-800",
-    "refunded": "bg-red-100 text-red-800",
-  };
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD'
+    }).format(amount)
+  }
 
-  const getStatusColor = (status: string) => statusColors[status] || "bg-gray-100 text-gray-800";
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleString()
+  }
 
-  const paymentIcons: { [key: string]: JSX.Element } = {
-    "credit card": <CreditCard className="h-4 w-4" />,
-    "debit card": <CreditCard className="h-4 w-4" />,
-  };
+  const formatShortDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString()
+  }
 
-  const getPaymentMethodIcon = (method: string) => {
-    const lower = method.toLowerCase();
-    return paymentIcons[lower] || <DollarSign className="h-4 w-4" />;
-  };
+  const formatTime = (dateString: string) => {
+    return new Date(dateString).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  }
+
+  const timeFilters = ["all", "today", "week", "month"]
+
+  if (isLoading) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-2 text-gray-600">Loading transactions...</p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h2 className="text-2xl font-semibold text-gray-900">Transactions</h2>
-          <p className="text-gray-600">View and manage transaction history</p>
+          <h2 className="text-2xl font-semibold text-gray-900">Transaction History</h2>
+          <p className="text-gray-600">View and manage your sales transactions</p>
           <p className="text-xs text-gray-500 mt-1">Last updated: {lastUpdated.toLocaleTimeString()}</p>
         </div>
         <div className="flex items-center gap-4">
@@ -110,40 +224,22 @@ export default function TransactionsView() {
               onChange={(e) => setSearchQuery(e.target.value)}
             />
           </div>
-          <select
-            value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-md bg-white"
-          >
-            <option value="all">All Status</option>
-            <option value="completed">Completed</option>
-            <option value="pending">Pending</option>
-            <option value="refunded">Refunded</option>
-          </select>
-          <Button 
-            variant="outline" 
-            onClick={handleRefresh}
-            disabled={isLoading}
-          >
-            <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
-            Refresh
-          </Button>
-          <Button variant="outline">
+          <Button className="bg-blue-600 hover:bg-blue-700">
             <Download className="h-4 w-4 mr-2" />
-            Export
+            Export Data
           </Button>
         </div>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+      {/* Stats Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center">
-              <TrendingUp className="h-8 w-8 text-green-600" />
+              <DollarSign className="h-8 w-8 text-green-600" />
               <div className="ml-4">
                 <p className="text-sm font-medium text-gray-600">Total Revenue</p>
-                <p className="text-2xl font-bold text-gray-900">${totalRevenue.toFixed(2)}</p>
+                <p className="text-2xl font-bold text-gray-900">{formatCurrency(stats.totalRevenue)}</p>
               </div>
             </div>
           </CardContent>
@@ -152,10 +248,10 @@ export default function TransactionsView() {
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center">
-              <Receipt className="h-8 w-8 text-blue-600" />
+              <ShoppingCart className="h-8 w-8 text-blue-600" />
               <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">Total Transactions</p>
-                <p className="text-2xl font-bold text-gray-900">{totalTransactions}</p>
+                <p className="text-sm font-medium text-gray-600">Total Orders</p>
+                <p className="text-2xl font-bold text-gray-900">{stats.totalOrders}</p>
               </div>
             </div>
           </CardContent>
@@ -164,117 +260,141 @@ export default function TransactionsView() {
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center">
-              <DollarSign className="h-8 w-8 text-purple-600" />
+              <TrendingUp className="h-8 w-8 text-purple-600" />
               <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">Avg Transaction</p>
-                <p className="text-2xl font-bold text-gray-900">${avgTransaction.toFixed(2)}</p>
+                <p className="text-sm font-medium text-gray-600">Avg Order</p>
+                <p className="text-2xl font-bold text-gray-900">{formatCurrency(stats.averageOrder)}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center">
+              <Calendar className="h-8 w-8 text-orange-600" />
+              <div className="ml-4">
+                <p className="text-sm font-medium text-gray-600">Today's Sales</p>
+                <p className="text-2xl font-bold text-gray-900">
+                  {formatCurrency(
+                    transactions
+                      .filter(t => new Date(t.created_at).toDateString() === new Date().toDateString())
+                      .reduce((sum, t) => sum + (t.total || 0), 0)
+                  )}
+                </p>
               </div>
             </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Transactions List */}
+      {/* Time Filters */}
+      <div className="flex items-center gap-4 mb-6">
+        <Tabs value={activeTab} onValueChange={setActiveTab}>
+          <TabsList className="bg-gray-100">
+            {timeFilters.map((filter) => (
+              <TabsTrigger key={filter} value={filter} className="px-4 capitalize">
+                {filter}
+                <Badge variant="secondary" className="ml-2">
+                  {filter === "all"
+                    ? transactions.length
+                    : filteredTransactions.length}
+                </Badge>
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
+      </div>
+
+      {/* Transactions Table */}
       <Card className="flex-1">
         <CardHeader>
-          <CardTitle>Recent Transactions ({filteredTransactions.length})</CardTitle>
+          <CardTitle className="flex items-center justify-between">
+            <span>Transactions ({filteredTransactions.length})</span>
+            <Button variant="ghost" onClick={fetchTransactions}>
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Refresh
+            </Button>
+          </CardTitle>
         </CardHeader>
         <CardContent className="p-0">
           <ScrollArea className="h-[calc(100vh-400px)]">
-            {isLoading ? (
-              <div className="flex items-center justify-center py-12">
-                <RefreshCw className="h-8 w-8 animate-spin text-gray-400" />
-                <span className="ml-3 text-gray-600">Loading transactions...</span>
-              </div>
-            ) : filteredTransactions.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-12 px-4">
-                <Receipt className="h-16 w-16 text-gray-300 mb-4" />
-                <h3 className="text-lg font-medium text-gray-900 mb-2">No Transactions Found</h3>
-                <p className="text-gray-500 text-center mb-4">
-                  {transactions.length === 0 
-                    ? "No transactions have been recorded yet. Create some orders to see them here."
-                    : "No transactions match your search criteria."
-                  }
-                </p>
-                <Button onClick={handleRefresh} variant="outline">
-                  <RefreshCw className="h-4 w-4 mr-2" />
-                  Refresh
-                </Button>
-              </div>
-            ) : (
-              <div className="space-y-3 p-4">
-                {filteredTransactions.map((transaction: any) => (
-                  <div
-                    key={transaction.id}
-                    className="p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
-                  >
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="flex items-center space-x-4">
-                        <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
-                          <Receipt className="h-5 w-5 text-blue-600" />
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="cursor-pointer" onClick={() => handleSort("date")}>
+                    Date {sortBy === "date" && (sortDirection === "asc" ? "↑" : "↓")}
+                  </TableHead>
+                  <TableHead>Time</TableHead>
+                  <TableHead className="cursor-pointer" onClick={() => handleSort("customer")}>
+                    Customer {sortBy === "customer" && (sortDirection === "asc" ? "↑" : "↓")}
+                  </TableHead>
+                  <TableHead className="cursor-pointer" onClick={() => handleSort("items")}>
+                    Items {sortBy === "items" && (sortDirection === "asc" ? "↑" : "↓")}
+                  </TableHead>
+                  <TableHead className="cursor-pointer text-right" onClick={() => handleSort("total")}>
+                    Total {sortBy === "total" && (sortDirection === "asc" ? "↑" : "↓")}
+                  </TableHead>
+                  <TableHead>Payment</TableHead>
+                  <TableHead>Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredTransactions.map((transaction) => (
+                  <TableRow key={transaction.id}>
+                    <TableCell className="font-medium">
+                      {formatShortDate(transaction.created_at)}
+                    </TableCell>
+                    <TableCell>
+                      {formatTime(transaction.created_at)}
+                    </TableCell>
+                    <TableCell>
+                      {transaction.customer_name || "Walk-in Customer"}
+                    </TableCell>
+                    <TableCell>
+                      <div className="space-y-1">
+                        <div className="text-sm font-medium">
+                          {transaction.items?.length || 0} items
                         </div>
-                        <div>
-                          <h3 className="font-semibold text-gray-900">{transaction.id}</h3>
-                          <p className="text-sm text-gray-600">{transaction.customerName}</p>
-                        </div>
+                        {transaction.items && transaction.items.length > 0 && (
+                          <div className="text-xs text-gray-500 truncate max-w-[200px]">
+                            {transaction.items.map((item: any) => item.name).join(", ")}
+                          </div>
+                        )}
                       </div>
-                      <div className="text-right">
-                        <p className="font-semibold text-lg text-gray-900">${transaction.total.toFixed(2)}</p>
-                        <div className="flex items-center gap-2">
-                          <Badge className={getStatusColor(transaction.status)}>{transaction.status}</Badge>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                      <div>
-                        <p className="text-gray-600 mb-1">Items:</p>
-                        <ul className="text-gray-900 space-y-1">
-                          {transaction.items.map((item: string, index: number) => (
-                            <li key={index} className="text-xs">
-                              • {item}
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                      <div className="space-y-2">
-                        <div className="flex justify-between">
-                          <span className="text-gray-600">Subtotal:</span>
-                          <span className="text-gray-900">${transaction.subtotal.toFixed(2)}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-gray-600">Tax:</span>
-                          <span className="text-gray-900">${transaction.tax.toFixed(2)}</span>
-                        </div>
-                        <div className="flex justify-between font-semibold">
-                          <span>Total:</span>
-                          <span>${transaction.total.toFixed(2)}</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center justify-between mt-4 pt-3 border-t border-gray-200">
-                      <div className="flex items-center gap-4 text-sm text-gray-600">
-                        <span>{transaction.timestamp}</span>
-                        <span>Server: {transaction.server}</span>
-                        <div className="flex items-center gap-1">
-                          {getPaymentMethodIcon(transaction.paymentMethod)}
-                          <span>{transaction.paymentMethod}</span>
-                        </div>
-                      </div>
+                    </TableCell>
+                    <TableCell className="text-right font-semibold">
+                      {formatCurrency(transaction.total || 0)}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className="bg-green-50 text-green-700">
+                        Cash
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
                       <div className="flex items-center gap-2">
-                        <Button size="sm" variant="outline">
-                          View Details
+                        <Button 
+                          size="icon" 
+                          variant="ghost" 
+                          title="View Details"
+                          onClick={() => viewTransactionDetails(transaction)}
+                        >
+                          <Eye className="h-4 w-4" />
                         </Button>
-                        <Button size="sm" variant="outline">
-                          Print Receipt
+                        <Button 
+                          size="icon" 
+                          variant="ghost" 
+                          title="Print Receipt"
+                          onClick={() => printReceipt(transaction)}
+                        >
+                          <Printer className="h-4 w-4" />
                         </Button>
                       </div>
-                    </div>
-                  </div>
+                    </TableCell>
+                  </TableRow>
                 ))}
-              </div>
-            )}
+              </TableBody>
+            </Table>
           </ScrollArea>
         </CardContent>
       </Card>

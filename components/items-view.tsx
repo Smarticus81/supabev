@@ -1,7 +1,6 @@
 "use client"
 
-// @ts-ignore
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect, useMemo, useCallback } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -9,21 +8,89 @@ import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Search, Plus, Edit, Trash2, Package, AlertTriangle, Info, RefreshCw } from "lucide-react"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
+import { Progress } from "@/components/ui/progress"
 
 
 interface ItemsViewProps {
-  drinks: any[]
   onAddToOrder: (drink: any) => void
   searchQuery: string
   onSearchChange: (query: string) => void
   onRefresh: () => void
 }
 
-export default function ItemsView({ drinks, onAddToOrder, searchQuery, onSearchChange, onRefresh }: ItemsViewProps) {
-  const [selectedCategory, setSelectedCategory] = useState("All")
+export default function ItemsView({ onAddToOrder, searchQuery, onSearchChange, onRefresh }: ItemsViewProps) {
+  const [allDrinks, setAllDrinks] = useState<any[]>([]);
+  const [filteredDrinks, setFilteredDrinks] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState("all");
   const [sortBy, setSortBy] = useState("name")
-  const [filteredDrinks, setFilteredDrinks] = useState([])
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc")
   const [lastUpdated, setLastUpdated] = useState(new Date())
+
+  // Add functions for item management
+  const editItem = (item: any) => {
+    alert(`Edit functionality for "${item.name}" would open an edit form.\n\nCurrent details:\nPrice: $${item.price?.toFixed(2) || '0.00'}\nInventory: ${item.inventory || 0} units\nCategory: ${item.category || 'Unknown'}`)
+  }
+
+  const deleteItem = (item: any) => {
+    if (confirm(`Are you sure you want to delete "${item.name}"?\n\nThis action cannot be undone.`)) {
+      // In a real app, you would call an API to delete the item
+      console.log('Deleting item:', item)
+      alert(`"${item.name}" has been deleted from the inventory.`)
+      onRefresh() // Refresh the items list
+    }
+  }
+
+  const fetchDrinks = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const response = await fetch("/api/drinks");
+      if (!response.ok) {
+        throw new Error('Failed to fetch drinks');
+      }
+      const data = await response.json();
+      const drinksArray: any[] = Array.isArray(data) ? data : [];
+      setAllDrinks(drinksArray);
+      setFilteredDrinks(drinksArray);
+    } catch (error: any) {
+      setError(error.message);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchDrinks();
+  }, [fetchDrinks]);
+
+  // This replaces the parent-provided `drinks` prop
+  const drinks = useMemo(() => {
+    let result = allDrinks;
+
+    if (searchQuery) {
+      result = result.filter(drink =>
+        drink.name.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+    }
+
+    if (activeTab !== "all") {
+      result = result.filter(drink => drink.category === activeTab);
+    }
+    
+    return result;
+  }, [allDrinks, searchQuery, activeTab]);
+
+  const [selectedCategory, setSelectedCategory] = useState("All")
 
   // Update timestamp when drinks data changes
   useEffect(() => {
@@ -42,16 +109,14 @@ export default function ItemsView({ drinks, onAddToOrder, searchQuery, onSearchC
     return ["All", ...new Set(inventoryDrinks.map((drink) => drink.category))]
   }, [inventoryDrinks])
 
-  // Filter and sort drinks
+  // Enhanced filter and sort
   useEffect(() => {
     let result = inventoryDrinks
 
-    // Filter by category
     if (selectedCategory !== "All") {
       result = result.filter((drink) => drink.category === selectedCategory)
     }
 
-    // Filter by search query
     if (searchQuery) {
       const query = searchQuery.toLowerCase()
       result = result.filter(
@@ -62,29 +127,48 @@ export default function ItemsView({ drinks, onAddToOrder, searchQuery, onSearchC
       )
     }
 
-    // Sort drinks
+    // Enhanced sorting with direction
     result.sort((a, b) => {
+      let compare = 0
       switch (sortBy) {
         case "name":
-          return a.name.localeCompare(b.name)
+          compare = a.name.localeCompare(b.name)
+          break
         case "price":
-          return a.price - b.price
+          compare = a.price - b.price
+          break
         case "inventory":
-          return b.inventory - a.inventory
+          compare = (a.inventory_oz || 0) - (b.inventory_oz || 0)
+          break
         case "category":
-          return a.category.localeCompare(b.category)
-        default:
-          return 0
+          compare = a.category.localeCompare(b.category)
+          break
       }
+      return sortDirection === "asc" ? compare : -compare
     })
 
     setFilteredDrinks(result)
-  }, [inventoryDrinks, selectedCategory, searchQuery, sortBy])
+  }, [inventoryDrinks, selectedCategory, searchQuery, sortBy, sortDirection])
 
-  const getInventoryStatus = (inventory: number) => {
-    if (inventory <= 10) return { status: "critical", color: "bg-red-100 text-red-800", icon: AlertTriangle }
-    if (inventory <= 25) return { status: "low", color: "bg-yellow-100 text-yellow-800", icon: Package }
-    return { status: "good", color: "bg-green-100 text-green-800", icon: Package }
+  const handleSort = (column: string) => {
+    if (sortBy === column) {
+      setSortDirection(prev => prev === "asc" ? "desc" : "asc")
+    } else {
+      setSortBy(column)
+      setSortDirection("asc")
+    }
+  }
+
+  const getInventoryStatus = (inventoryOz: number, unitVolumeOz: number) => {
+    const units = Math.floor(inventoryOz / unitVolumeOz)
+    if (units <= 5) return { status: "critical", color: "bg-red-500", text: "text-red-700", progress: "bg-red-500" }
+    if (units <= 20) return { status: "low", color: "bg-yellow-500", text: "text-yellow-700", progress: "bg-yellow-500" }
+    return { status: "good", color: "bg-green-500", text: "text-green-700", progress: "bg-green-500" }
+  }
+
+  const getProgressValue = (inventoryOz: number, unitVolumeOz: number) => {
+    const units = Math.floor(inventoryOz / unitVolumeOz)
+    return Math.min((units / 100) * 100, 100) // Assume 100 units as full, cap at 100%
   }
 
   const formatPrice = (price: number) => {
@@ -194,7 +278,7 @@ export default function ItemsView({ drinks, onAddToOrder, searchQuery, onSearchC
         </Card>
       </div>
 
-      {/* Filters */}
+      {/* Category Filters */}
       <div className="flex items-center gap-4 mb-6">
         <Tabs value={selectedCategory} onValueChange={setSelectedCategory}>
           <TabsList className="bg-gray-100">
@@ -210,20 +294,9 @@ export default function ItemsView({ drinks, onAddToOrder, searchQuery, onSearchC
             ))}
           </TabsList>
         </Tabs>
-
-        <select
-          value={sortBy}
-          onChange={(e) => setSortBy(e.target.value)}
-          className="px-3 py-2 border border-gray-300 rounded-md bg-white"
-        >
-          <option value="name">Sort by Name</option>
-          <option value="price">Sort by Price</option>
-          <option value="inventory">Sort by Stock</option>
-          <option value="category">Sort by Category</option>
-        </select>
       </div>
 
-      {/* Items List */}
+      {/* Items Table */}
       <Card className="flex-1">
         <CardHeader>
           <CardTitle className="flex items-center justify-between">
@@ -232,74 +305,90 @@ export default function ItemsView({ drinks, onAddToOrder, searchQuery, onSearchC
               <RefreshCw className="h-4 w-4 mr-2" />
               Refresh
             </Button>
-            <div className="text-sm text-gray-500">
-              Showing {selectedCategory === "All" ? "all categories" : selectedCategory.toLowerCase()}
-            </div>
           </CardTitle>
         </CardHeader>
         <CardContent className="p-0">
-          <ScrollArea className="h-[calc(100vh-500px)]">
-            <div className="space-y-2 p-4">
-              {filteredDrinks.map((drink) => {
-                const inventoryStatus = getInventoryStatus(drink.inventory)
-                const StatusIcon = inventoryStatus.icon
+          <ScrollArea className="h-[calc(100vh-400px)]">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-[250px] cursor-pointer" onClick={() => handleSort("name")}>
+                    Name {sortBy === "name" && (sortDirection === "asc" ? "↑" : "↓")}
+                  </TableHead>
+                  <TableHead className="cursor-pointer" onClick={() => handleSort("category")}>
+                    Category {sortBy === "category" && (sortDirection === "asc" ? "↑" : "↓")}
+                  </TableHead>
+                  <TableHead>Subcategory</TableHead>
+                  <TableHead className="cursor-pointer text-right" onClick={() => handleSort("price")}>
+                    Price {sortBy === "price" && (sortDirection === "asc" ? "↑" : "↓")}
+                  </TableHead>
+                  <TableHead className="w-[300px] cursor-pointer" onClick={() => handleSort("inventory")}>
+                    Stock Level {sortBy === "inventory" && (sortDirection === "asc" ? "↑" : "↓")}
+                  </TableHead>
+                  <TableHead>Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredDrinks.map((drink) => {
+                  const inventoryOz = drink.inventory_oz || 0
+                  const unitVolumeOz = drink.unit_volume_oz || 12
+                  const units = Math.floor(inventoryOz / unitVolumeOz)
+                  const status = getInventoryStatus(inventoryOz, unitVolumeOz)
+                  const progressValue = getProgressValue(inventoryOz, unitVolumeOz)
 
-                return (
-                  <div
-                    key={`${drink.id || drink.name}-${drink.category}`}
-                    className="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
-                  >
-                    <div className="flex items-center space-x-4">
-                      <div className="w-12 h-12 bg-gray-200 rounded-lg flex items-center justify-center">
-                        <Package className="h-6 w-6 text-gray-500" />
-                      </div>
-                      <div>
-                        <h3 className="font-semibold text-gray-900">{drink.name}</h3>
-                        <p className="text-sm text-gray-600">{drink.subcategory}</p>
-                        <div className="flex items-center gap-2 mt-1">
-                          <Badge variant="outline" className="text-xs">
-                            {drink.category}
-                          </Badge>
-                          <Badge variant="outline" className="text-xs">
-                            {drink.subcategory}
-                          </Badge>
+                  return (
+                    <TableRow key={drink.id || drink.name}>
+                      <TableCell className="font-medium">{drink.name}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline">{drink.category}</Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline">{drink.subcategory}</Badge>
+                      </TableCell>
+                      <TableCell className="text-right">{formatPrice(drink.price)}</TableCell>
+                      <TableCell>
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between">
+                            <span className={`text-sm font-medium ${status.text}`}>
+                              {units} units ({inventoryOz.toFixed(1)} oz)
+                            </span>
+                            <Badge className={status.color}>{status.status}</Badge>
+                          </div>
+                          <Progress value={progressValue} className="h-2" indicatorClassName={status.progress} />
                         </div>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center space-x-6">
-                      <div className="text-right">
-                        <p className="font-semibold text-gray-900">{formatPrice(drink.price)}</p>
-                        <div className="flex items-center gap-1">
-                          <StatusIcon className="h-3 w-3" />
-                          <span className={`text-xs px-2 py-1 rounded-full ${inventoryStatus.color}`}>
-                            {drink.inventory} in stock
-                          </span>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => onAddToOrder(drink)}
+                          >
+                            <Plus className="h-4 w-4 mr-1" />
+                            Add
+                          </Button>
+                          <Button 
+                            size="icon" 
+                            variant="ghost"
+                            onClick={() => editItem(drink)}
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button 
+                            size="icon" 
+                            variant="ghost" 
+                            className="text-red-600"
+                            onClick={() => deleteItem(drink)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
                         </div>
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="bg-blue-50 text-blue-600 hover:bg-blue-100"
-                          onClick={() => onAddToOrder(drink)}
-                        >
-                          <Plus className="h-4 w-4 mr-1" />
-                          Add
-                        </Button>
-                        <Button size="sm" variant="ghost">
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        <Button size="sm" variant="ghost" className="text-red-600 hover:text-red-700">
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
+              </TableBody>
+            </Table>
           </ScrollArea>
         </CardContent>
       </Card>

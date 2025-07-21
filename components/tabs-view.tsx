@@ -21,6 +21,14 @@ export default function TabsView({ currentCustomer, orders, total }: TabsViewPro
   const [showNewTabForm, setShowNewTabForm] = useState(false)
   const [newTabName, setNewTabName] = useState("")
 
+  // Add function to view tab details
+  const viewTabDetails = (tab: any) => {
+    const itemsList = tab.items.map((item: any) => `${item.name} (${item.quantity}x) - $${(item.price * item.quantity).toFixed(2)}`).join('\n')
+    const total = calculateTabTotal(tab.items)
+    
+    alert(`Tab Details:\n\nCustomer: ${tab.customer}\nStatus: ${tab.status}\nItems (${tab.items.length}):\n${itemsList || 'No items'}\n\nTotal: $${total.toFixed(2)}`)
+  }
+
   const currentTabs = activeTab === "open" ? openTabs : closedTabs
 
   const filteredTabs = currentTabs.filter((tab) => tab.partyName.toLowerCase().includes(searchQuery.toLowerCase()))
@@ -279,6 +287,7 @@ export default function TabsView({ currentCustomer, orders, total }: TabsViewPro
                       <Button
                         variant="outline"
                         className="flex-1 text-sm py-2 border-gray-300 text-gray-700 hover:bg-gray-50 bg-transparent touch-manipulation"
+                        onClick={() => viewTabDetails(tab)}
                       >
                         View Details
                       </Button>

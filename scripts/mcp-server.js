@@ -1,182 +1,28 @@
 #!/usr/bin/env node
 
 require('dotenv').config({ path: require('path').resolve(__dirname, '..', '.env') });
-const Database = require('better-sqlite3');
+const { neon } = require('@neondatabase/serverless');
+const { drizzle } = require('drizzle-orm/neon-http');
+const { drinks, orders, customers, venues, eventBookings, inventory, transactions } = require('../db/schema');
+const { eq, like, desc, sql, and, gte, lte } = require('drizzle-orm');
 const path = require('path');
 const fs = require('fs');
 
 class MCPServer {
     constructor() {
-        this.db = null;
-        this.dbPath = path.join(__dirname, '..', 'data', 'bar.db');
+        // Initialize Neon database connection
+        const sqlConnection = neon(process.env.DATABASE_URL);
+        this.db = drizzle(sqlConnection, { 
+            schema: { drinks, orders, customers, venues, eventBookings, inventory, transactions }
+        });
+        
         this.cartStorage = new Map(); // In-memory cart storage by clientId
+        this.paymentMethods = new Map(); // In-memory payment methods by clientId
         this.requestBuffer = '';
         this.isReady = false;
         
-        this.initializeDatabase();
         this.setupProcessHandlers();
         this.notifyReady();
-    }
-
-    initializeDatabase() {
-        try {
-            // Ensure data directory exists
-            const dataDir = path.dirname(this.dbPath);
-            if (!fs.existsSync(dataDir)) {
-                fs.mkdirSync(dataDir, { recursive: true });
-            }
-
-            // Initialize database with better options
-            this.db = new Database(this.dbPath, { 
-                // verbose: console.log, // Comment out verbose logging
-                fileMustExist: false,
-                timeout: 10000,
-                readonly: false
-            });
-            
-            // Set pragmas for better performance and reliability
-            this.db.pragma('journal_mode = WAL');
-            this.db.pragma('synchronous = NORMAL');
-            this.db.pragma('cache_size = 1000');
-            this.db.pragma('temp_store = memory');
-            this.db.pragma('mmap_size = 268435456'); // 256MB
-            
-            this.initializeTables();
-            this.loadInitialData();
-            
-            process.stderr.write('Database initialized successfully\n');
-            
-        } catch (error) {
-            process.stderr.write(`Failed to initialize database: ${error}\n`);
-            process.exit(1);
-        }
-    }
-
-    initializeTables() {
-        try {
-            // Create drinks table if not exists
-            this.db.exec(`
-                CREATE TABLE IF NOT EXISTS drinks (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    name TEXT UNIQUE NOT NULL,
-                    category TEXT NOT NULL,
-                    subcategory TEXT,
-                    price REAL NOT NULL,
-                    inventory_oz REAL DEFAULT 0,
-                    unit_volume_oz REAL DEFAULT 12,
-                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-                )
-            `);
-
-            // Create orders table
-            this.db.exec(`
-                CREATE TABLE IF NOT EXISTS orders (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    customer_name TEXT,
-                    total_amount REAL,
-                    status TEXT DEFAULT 'pending',
-                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-                )
-            `);
-
-            // Create order_items table
-            this.db.exec(`
-                CREATE TABLE IF NOT EXISTS order_items (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    order_id INTEGER,
-                    drink_name TEXT NOT NULL,
-                    quantity INTEGER NOT NULL,
-                    price REAL NOT NULL,
-                    serving_name TEXT DEFAULT 'bottle',
-                    FOREIGN KEY (order_id) REFERENCES orders (id)
-                )
-            `);
-
-            // Create config table
-            this.db.exec(`
-                CREATE TABLE IF NOT EXISTS config (
-                    key TEXT PRIMARY KEY,
-                    value TEXT NOT NULL
-                )
-            `);
-
-            // Create indexes for better performance
-            this.db.exec(`
-                CREATE INDEX IF NOT EXISTS idx_drinks_name ON drinks(name);
-                CREATE INDEX IF NOT EXISTS idx_drinks_category ON drinks(category);
-                CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
-                CREATE INDEX IF NOT EXISTS idx_order_items_order_id ON order_items(order_id);
-            `);
-
-        } catch (error) {
-            process.stderr.write(`Error creating tables: ${error}\n`);
-            throw error;
-        }
-    }
-
-    loadInitialData() {
-        try {
-            // Check if we need to load initial data
-            const drinkCount = this.db.prepare('SELECT COUNT(*) as count FROM drinks').get().count;
-            
-            if (drinkCount === 0) {
-                process.stderr.write('Loading initial drink data...\n');
-                this.loadDrinksFromJson();
-            }
-        } catch (error) {
-            process.stderr.write(`Error loading initial data: ${error}\n`);
-        }
-    }
-
-    loadDrinksFromJson() {
-        try {
-            const drinksPath = path.join(__dirname, '..', 'data', 'drinks.json');
-            if (fs.existsSync(drinksPath)) {
-                const drinksData = JSON.parse(fs.readFileSync(drinksPath, 'utf8'));
-                
-                const insertDrink = this.db.prepare(`
-                    INSERT OR REPLACE INTO drinks 
-                    (name, category, subcategory, price, inventory_oz, unit_volume_oz)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                `);
-
-                const insertMany = this.db.transaction((drinks) => {
-                    for (const drink of drinks) {
-                        // Calculate inventory in ounces (default inventory * unit volume)
-                        const inventory = drink.inventory || 0;
-                        let unitVolumeOz = 12; // Default to 12oz
-
-                        // Set unit volume based on category
-                        if (drink.category === 'Wine') {
-                            unitVolumeOz = 25.36; // 750ml in oz
-                        } else if (drink.category === 'Spirits') {
-                            unitVolumeOz = 25.36; // 750ml in oz
-                        } else if (drink.category === 'Beer') {
-                            unitVolumeOz = 12; // 12oz bottle/can
-                        } else if (drink.category === 'Non-Alcoholic') {
-                            unitVolumeOz = 12; // 12oz
-                        }
-
-                        const inventoryOz = inventory * unitVolumeOz;
-
-                        insertDrink.run(
-                            drink.name,
-                            drink.category,
-                            drink.subcategory || null,
-                            drink.price,
-                            inventoryOz,
-                            unitVolumeOz
-                        );
-                    }
-                });
-
-                insertMany(drinksData);
-                process.stderr.write(`Loaded ${drinksData.length} drinks into database\n`);
-            }
-        } catch (error) {
-            process.stderr.write(`Error loading drinks from JSON: ${error}\n`);
-        }
     }
 
     setupProcessHandlers() {
@@ -257,11 +103,11 @@ class MCPServer {
             
             switch (toolName) {
                 case 'check_inventory':
-                    return this.checkInventory(params);
+                    return await this.checkInventory(params);
                 case 'add_inventory':
-                    return this.addInventory(params);
+                    return await this.addInventory(params);
                 case 'cart_add':
-                    return this.cartAdd(params);
+                    return await this.cartAdd(params);
                 case 'cart_add_multiple':
                     return this.cartAddMultiple(params);
                 case 'cart_remove':
@@ -286,6 +132,10 @@ class MCPServer {
                     return this.getTtsConfig();
                 case 'set_tts_config':
                     return this.setTtsConfig(params);
+                case 'payment_select':
+                    return this.paymentSelect(params);
+                case 'payment_process':
+                    return this.paymentProcess(params);
                 default:
                     throw new Error(`Unknown tool: ${toolName}`);
             }
@@ -295,7 +145,7 @@ class MCPServer {
         }
     }
 
-    checkInventory(params) {
+    async checkInventory(params) {
         const { drink_name } = params;
         
         if (!drink_name) {
@@ -303,20 +153,18 @@ class MCPServer {
         }
 
         try {
-            const stmt = this.db.prepare(`
-                SELECT name, category, subcategory, price, inventory_oz, unit_volume_oz
-                FROM drinks 
-                WHERE name = ? COLLATE NOCASE
-            `);
+            const result = await this.db
+                .select()
+                .from(drinks)
+                .where(sql`lower(${drinks.name}) = lower(${drink_name})`)
+                .limit(1);
             
-            const result = stmt.get(drink_name);
-            
-            if (!result) {
-                return { error: `Drink \"${drink_name}\" not found in inventory` };
+            if (!result || result.length === 0) {
+                return { error: `Drink "${drink_name}" not found in inventory` };
             }
 
             return {
-                ...result,
+                ...result[0],
                 success: true
             };
         } catch (error) {
@@ -325,53 +173,48 @@ class MCPServer {
         }
     }
 
-    addInventory(params) {
+    async addInventory(params) {
         const { drink_name, quantity } = params;
         
-        if (!drink_name || !quantity) {
+        if (!drink_name || quantity === undefined) {
             return { error: 'drink_name and quantity are required' };
         }
 
-        if (quantity <= 0) {
-            return { error: 'quantity must be positive' };
+        if (quantity === 0) {
+            return { error: 'quantity must be non-zero' };
         }
 
         try {
             // First check if drink exists
-            const checkStmt = this.db.prepare(`
-                SELECT name, category, unit_volume_oz, inventory_oz 
-                FROM drinks 
-                WHERE name = ? COLLATE NOCASE
-            `);
-            const drink = checkStmt.get(drink_name);
+            const drinkResult = await this.db
+                .select()
+                .from(drinks)
+                .where(sql`lower(${drinks.name}) = lower(${drink_name})`)
+                .limit(1);
             
-            if (!drink) {
-                return { error: `Drink \"${drink_name}\" not found` };
+            if (!drinkResult || drinkResult.length === 0) {
+                return { error: `Drink "${drink_name}" not found` };
             }
 
-            // Calculate ounces to add
-            const ouncesToAdd = quantity * drink.unit_volume_oz;
+            const drink = drinkResult[0];
             
+            // Calculate new inventory (assuming inventory is in units)
+            const currentInventory = drink.inventory || 0;
+            const newInventory = currentInventory + quantity;
+
+            if (newInventory < 0) {
+                return { error: 'Cannot adjust inventory below zero' };
+            }
+
             // Update inventory
-            const updateStmt = this.db.prepare(`
-                UPDATE drinks 
-                SET inventory_oz = inventory_oz + ?, updated_at = CURRENT_TIMESTAMP
-                WHERE name = ? COLLATE NOCASE
-            `);
-            
-            const updateResult = updateStmt.run(ouncesToAdd, drink_name);
-            
-            if (updateResult.changes === 0) {
-                return { error: 'Failed to update inventory' };
-            }
-
-            // Get updated values
-            const updatedDrink = checkStmt.get(drink_name);
-            const totalUnits = Math.floor(updatedDrink.inventory_oz / drink.unit_volume_oz);
+            await this.db
+                .update(drinks)
+                .set({ inventory: newInventory })
+                .where(sql`lower(${drinks.name}) = lower(${drink_name})`);
             
             // Determine unit name
             let unitName = 'bottles';
-            if (drink.category === 'Beer' && updatedDrink.subcategory === 'Hard Seltzer') {
+            if (drink.category === 'Beer' && drink.subcategory === 'Hard Seltzer') {
                 unitName = 'cans';
             } else if (drink.category === 'Beer') {
                 unitName = 'bottles';
@@ -379,22 +222,24 @@ class MCPServer {
                 unitName = 'cans';
             }
 
+            const action = quantity > 0 ? 'Added' : 'Deducted';
+            const absQuantity = Math.abs(quantity);
+
             return {
                 success: true,
                 drink_name: drink.name,
-                units_added: quantity,
-                total_units: totalUnits,
-                added_oz: ouncesToAdd,
+                units_adjusted: absQuantity,
+                total_units: newInventory,
                 unit_name: unitName,
-                message: `Added ${quantity} ${unitName} of ${drink.name} to inventory`
+                message: `${action} ${absQuantity} ${unitName} of ${drink.name} in inventory`
             };
         } catch (error) {
             process.stderr.write(`Database error in addInventory: ${error}\n`);
-            return { error: 'Database error while adding inventory' };
+            return { error: 'Database error while adjusting inventory' };
         }
     }
 
-    cartAdd(params) {
+    async cartAdd(params) {
         const { clientId, drink_name, quantity = 1, serving_name = 'bottle' } = params;
         
         if (!clientId || !drink_name) {
@@ -403,14 +248,17 @@ class MCPServer {
 
         try {
             // Verify drink exists
-            const drinkStmt = this.db.prepare(`
-                SELECT name, price FROM drinks WHERE name = ? COLLATE NOCASE
-            `);
-            const drink = drinkStmt.get(drink_name);
+            const drinkResult = await this.db
+                .select({ name: drinks.name, price: drinks.price })
+                .from(drinks)
+                .where(sql`lower(${drinks.name}) = lower(${drink_name})`)
+                .limit(1);
             
-            if (!drink) {
-                return { error: `Drink \"${drink_name}\" not found` };
+            if (!drinkResult || drinkResult.length === 0) {
+                return { error: `Drink "${drink_name}" not found` };
             }
+
+            const drink = drinkResult[0];
 
             // Get or create cart for client
             if (!this.cartStorage.has(clientId)) {
@@ -598,15 +446,20 @@ class MCPServer {
                 return { error: 'Cart is empty' };
             }
 
+            // Get payment method if selected
+            const payment_method = this.paymentMethods.get(clientId) || 'cash';
+
             // Create order from cart
             const result = this.createOrder({
                 items: cart,
-                customer_name
+                customer_name,
+                payment_method
             });
 
             if (result.success) {
-                // Clear cart after successful order
+                // Clear cart and payment method after successful order
                 this.cartStorage.set(clientId, []);
+                this.paymentMethods.delete(clientId);
             }
 
             return result;
@@ -617,35 +470,53 @@ class MCPServer {
     }
 
     createOrder(params) {
-        const { items, customer_name } = params;
+        const { items, customer_name, payment_method = 'cash' } = params;
         
         if (!items || !Array.isArray(items) || items.length === 0) {
             return { error: 'items array is required and cannot be empty' };
         }
 
-        try {
-            // Calculate totals
-            const subtotal = items.reduce((sum, item) => sum + (item.quantity * item.price), 0);
-            const tax = subtotal * 0.08; // 8% tax
-            const total = subtotal + tax;
+        const transaction = this.db.transaction(() => {
+            try {
+                // Check stock for all items
+                const stockCheckStmt = this.db.prepare(`
+                    SELECT name, inventory_oz, unit_volume_oz
+                    FROM drinks 
+                    WHERE name = ? COLLATE NOCASE
+                `);
 
-            // Create order in database
-            const insertOrder = this.db.prepare(`
-                INSERT INTO orders (customer_name, total_amount, status)
-                VALUES (?, ?, 'completed')
-            `);
-            
-            const orderResult = insertOrder.run(customer_name, total);
-            const orderId = orderResult.lastInsertRowid;
+                for (const item of items) {
+                    const drink = stockCheckStmt.get(item.drink_name);
+                    if (!drink) {
+                        throw new Error(`Drink "${item.drink_name}" not found`);
+                    }
+                    const neededOz = item.quantity * drink.unit_volume_oz;
+                    if (drink.inventory_oz < neededOz) {
+                        throw new Error(`Insufficient stock for ${item.drink_name}: need ${item.quantity} but only ${Math.floor(drink.inventory_oz / drink.unit_volume_oz)} available`);
+                    }
+                }
 
-            // Add order items
-            const insertOrderItem = this.db.prepare(`
-                INSERT INTO order_items (order_id, drink_name, quantity, price, serving_name)
-                VALUES (?, ?, ?, ?, ?)
-            `);
+                // Calculate totals
+                const subtotal = items.reduce((sum, item) => sum + (item.quantity * item.price), 0);
+                const tax = subtotal * 0.08; // 8% tax
+                const total = subtotal + tax;
 
-            const insertItems = this.db.transaction((orderItems) => {
-                for (const item of orderItems) {
+                // Create order in database
+                const insertOrder = this.db.prepare(`
+                    INSERT INTO orders (customer_name, total_amount, status, payment_method)
+                    VALUES (?, ?, 'completed', ?)
+                `);
+                
+                const orderResult = insertOrder.run(customer_name, total, payment_method);
+                const orderId = orderResult.lastInsertRowid;
+
+                // Add order items
+                const insertOrderItem = this.db.prepare(`
+                    INSERT INTO order_items (order_id, drink_name, quantity, price, serving_name)
+                    VALUES (?, ?, ?, ?, ?)
+                `);
+
+                for (const item of items) {
                     insertOrderItem.run(
                         orderId,
                         item.drink_name,
@@ -654,21 +525,39 @@ class MCPServer {
                         item.serving_name || 'bottle'
                     );
                 }
-            });
 
-            insertItems(items);
+                // Deduct inventory
+                const updateInventory = this.db.prepare(`
+                    UPDATE drinks 
+                    SET inventory_oz = inventory_oz - ?, updated_at = CURRENT_TIMESTAMP
+                    WHERE name = ? COLLATE NOCASE
+                `);
 
-            return {
-                success: true,
-                order_id: orderId,
-                subtotal: subtotal.toFixed(2),
-                tax: tax.toFixed(2),
-                total: total.toFixed(2),
-                message: `Order ${orderId} created successfully`
-            };
+                for (const item of items) {
+                    const drink = stockCheckStmt.get(item.drink_name);
+                    const deductOz = item.quantity * drink.unit_volume_oz;
+                    updateInventory.run(deductOz, item.drink_name);
+                }
+
+                return {
+                    success: true,
+                    order_id: orderId,
+                    subtotal: subtotal.toFixed(2),
+                    tax: tax.toFixed(2),
+                    total: total.toFixed(2),
+                    payment_method,
+                    message: `Order ${orderId} created and inventory updated successfully`
+                };
+            } catch (error) {
+                throw error;
+            }
+        });
+
+        try {
+            return transaction();
         } catch (error) {
-            process.stderr.write(`Error in createOrder: ${error}\n`);
-            return { error: 'Failed to create order' };
+            process.stderr.write(`Transaction error in createOrder: ${error}\n`);
+            return { error: error.message };
         }
     }
 
@@ -721,21 +610,21 @@ class MCPServer {
             const lowStockStmt = this.db.prepare(`
                 SELECT name, inventory_oz / unit_volume_oz as units
                 FROM drinks 
-                WHERE units < 5
+                WHERE (inventory_oz / unit_volume_oz) < 5
                 ORDER BY units ASC
             `);
             const lowStock = lowStockStmt.all();
 
             // Total inventory value
             const valueStmt = this.db.prepare(`
-                SELECT SUM(inventory_oz / unit_volume_oz * price) as total_value
+                SELECT SUM((inventory_oz / unit_volume_oz) * price) as total_value
                 FROM drinks
             `);
             const { total_value } = valueStmt.get();
 
             // Categories summary
             const categoriesStmt = this.db.prepare(`
-                SELECT category, COUNT(*) as count, SUM(inventory_oz / unit_volume_oz * price) as value
+                SELECT category, COUNT(*) as count, SUM((inventory_oz / unit_volume_oz) * price) as value
                 FROM drinks
                 GROUP BY category
             `);
@@ -743,8 +632,8 @@ class MCPServer {
 
             return {
                 success: true,
-                low_stock: lowStock,
-                total_inventory_value: total_value.toFixed(2),
+                lowStock,  // Renamed for consistency
+                total_inventory_value: total_value ? total_value.toFixed(2) : '0.00',
                 category_summary: categories,
                 message: 'Inventory insights generated'
             };
@@ -785,7 +674,7 @@ class MCPServer {
 
             return {
                 success: true,
-                top_sellers: topSellers,
+                topSellers,  // Renamed for consistency
                 total_revenue: total_revenue ? total_revenue.toFixed(2) : '0.00',
                 order_count: order_count || 0,
                 recent_orders: recentOrders,
@@ -799,15 +688,52 @@ class MCPServer {
 
     getTtsConfig() {
         try {
-            const stmt = this.db.prepare('SELECT * FROM config WHERE key IN (\'tts_provider\', \'tts_voice\')');
+            const stmt = this.db.prepare(`
+                SELECT * FROM config WHERE key IN (
+                    'tts_provider', 'tts_voice', 'tts_rate', 'tts_temperature',
+                    'vad_threshold', 'prefix_padding', 'silence_duration', 'max_tokens',
+                    'response_style', 'audio_gain', 'noise_suppression', 'echo_cancellation',
+                    'personality_mode', 'verbosity'
+                )
+            `);
             const rows = stmt.all();
             const config = rows.reduce((acc, row) => {
                 acc[row.key] = row.value;
                 return acc;
             }, {});
+            
+            // Ensure we always return a config with fallback to working provider
+            const finalConfig = Object.keys(config).length > 0 ? config : { 
+                tts_provider: 'openai', 
+                tts_voice: 'alloy',
+                tts_rate: '1.0',
+                tts_temperature: '0.5',
+                vad_threshold: '0.5',
+                prefix_padding: '200',
+                silence_duration: '300',
+                max_tokens: '1500',
+                response_style: 'efficient',
+                audio_gain: '1.0',
+                noise_suppression: 'true',
+                echo_cancellation: 'true',
+                personality_mode: 'professional',
+                verbosity: 'balanced'
+            };
+            
+            // Convert string values to appropriate types
+            if (finalConfig.tts_rate) finalConfig.rate = parseFloat(finalConfig.tts_rate);
+            if (finalConfig.tts_temperature) finalConfig.temperature = parseFloat(finalConfig.tts_temperature);
+            if (finalConfig.vad_threshold) finalConfig.vad_threshold = parseFloat(finalConfig.vad_threshold);
+            if (finalConfig.prefix_padding) finalConfig.prefix_padding = parseInt(finalConfig.prefix_padding);
+            if (finalConfig.silence_duration) finalConfig.silence_duration = parseInt(finalConfig.silence_duration);
+            if (finalConfig.max_tokens) finalConfig.max_tokens = parseInt(finalConfig.max_tokens);
+            if (finalConfig.audio_gain) finalConfig.audio_gain = parseFloat(finalConfig.audio_gain);
+            if (finalConfig.noise_suppression) finalConfig.noise_suppression = finalConfig.noise_suppression === 'true';
+            if (finalConfig.echo_cancellation) finalConfig.echo_cancellation = finalConfig.echo_cancellation === 'true';
+            
             return {
                 success: true,
-                config: config || { tts_provider: 'deepgram', tts_voice: 'aura-2-juno-en' }
+                config: finalConfig
             };
         } catch (error) {
             return { error: 'Failed to get TTS config' };
@@ -815,18 +741,72 @@ class MCPServer {
     }
 
     setTtsConfig(params) {
-        const { tts_provider, tts_voice } = params;
+        const { 
+            tts_provider, tts_voice, rate, temperature,
+            vad_threshold, prefix_padding, silence_duration, max_tokens,
+            response_style, audio_gain, noise_suppression, echo_cancellation,
+            personality_mode, verbosity
+        } = params;
+        
         if (!tts_provider || !tts_voice) {
             return { error: 'tts_provider and tts_voice required' };
         }
+        
         try {
             const insert = this.db.prepare('INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)');
             insert.run('tts_provider', tts_provider);
             insert.run('tts_voice', tts_voice);
+            
+            // Store all configuration parameters
+            if (rate !== undefined) insert.run('tts_rate', rate.toString());
+            if (temperature !== undefined) insert.run('tts_temperature', temperature.toString());
+            if (vad_threshold !== undefined) insert.run('vad_threshold', vad_threshold.toString());
+            if (prefix_padding !== undefined) insert.run('prefix_padding', prefix_padding.toString());
+            if (silence_duration !== undefined) insert.run('silence_duration', silence_duration.toString());
+            if (max_tokens !== undefined) insert.run('max_tokens', max_tokens.toString());
+            if (response_style !== undefined) insert.run('response_style', response_style);
+            if (audio_gain !== undefined) insert.run('audio_gain', audio_gain.toString());
+            if (noise_suppression !== undefined) insert.run('noise_suppression', noise_suppression.toString());
+            if (echo_cancellation !== undefined) insert.run('echo_cancellation', echo_cancellation.toString());
+            if (personality_mode !== undefined) insert.run('personality_mode', personality_mode);
+            if (verbosity !== undefined) insert.run('verbosity', verbosity);
+            
             return { success: true };
         } catch (error) {
             return { error: 'Failed to set TTS config' };
         }
+    }
+
+    paymentSelect(params) {
+        const { clientId, method } = params;
+        if (!clientId || !method) {
+            return { error: 'clientId and method are required' };
+        }
+        if (!['card', 'cash'].includes(method)) {
+            return { error: 'Invalid payment method. Must be "card" or "cash"' };
+        }
+        this.paymentMethods.set(clientId, method);
+        return {
+            success: true,
+            method,
+            message: `Payment method set to ${method}`
+        };
+    }
+
+    paymentProcess(params) {
+        const { clientId } = params;
+        if (!clientId) {
+            return { error: 'clientId is required' };
+        }
+        // Simulate payment processing
+        // In real system, integrate with payment gateway
+        const method = this.paymentMethods.get(clientId) || 'cash';
+        // Assume success
+        return {
+            success: true,
+            method,
+            message: 'Payment processed successfully'
+        };
     }
 
     sendResponse(response) {
@@ -845,16 +825,11 @@ class MCPServer {
     }
 
     cleanup() {
-        if (this.db) {
-            try {
-                this.db.close();
-                process.stderr.write('Database connection closed\n');
-            } catch (error) {
-                process.stderr.write(`Error closing database: ${error}\n`);
-            }
-        }
+        // Neon database connections are handled automatically
+        // No manual cleanup needed
+        process.stderr.write('Cleaning up MCP server\n');
     }
 }
 
 // Start the MCP server
-new MCPServer(); 
+new MCPServer();

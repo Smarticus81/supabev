@@ -1,6 +1,5 @@
 "use client"
 
-// @ts-ignore
 import { useState, useEffect, useMemo, useCallback } from "react"
 import { Search, Save, CreditCard, Menu, Users, Receipt, Package, X, Settings } from "lucide-react"
 import { Card } from "@/components/ui/card"
@@ -8,19 +7,19 @@ import { Button } from "@/components/ui/button"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Input } from "@/components/ui/input"
 import { Toaster } from "@/components/ui/toaster"
-import OrderPanel from "@/components/order-panel";
+import OrderPanel from "@/components/order-panel"
 import CategoryGrid from "@/components/category-grid"
 import DatabaseViewer from "@/components/database-viewer"
 import ItemsView from "@/components/items-view"
 import TabsView from "@/components/tabs-view"
 import TransactionsView from "@/components/transactions-view"
-import VoiceAssistantButton from "@/components/voice-assistant-button";
-import useVoiceAssistant from "@/hooks/use-voice-assistant";
+import { VoiceControlButton } from "@/components/voice-control-button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
 import { useForm } from 'react-hook-form'
 import { useIsMobile } from '@/hooks/use-mobile'
-import { useToast } from '@/components/ui/use-toast'
+import { useToast } from '@/hooks/use-toast'
+import { SettingsView } from "@/components/settings-view"
 
 interface OrderItem {
   id: string;
@@ -41,96 +40,8 @@ export default function Home() {
   const [showDbViewer, setShowDbViewer] = useState(false)
   const [showMobileOrder, setShowMobileOrder] = useState(false)
   const [isBevSpeaking, setIsBevSpeaking] = useState(false)
-
-  const handleTranscript = (transcript: string) => {
-    console.log("Transcript received:", transcript);
-  };
-
-  // Handle order updates from voice assistant
-  const handleOrderUpdate = useCallback((data: any) => {
-    console.log("Processing order update:", data);
-    if (data.action === 'add_items' && data.items) {
-      setOrders(prevOrders => {
-        const updatedOrders = [...prevOrders];
-        
-        // Add each item from voice order
-        data.items.forEach((voiceItem: any) => {
-          const existingItemIndex = updatedOrders.findIndex(item => 
-            item.name === voiceItem.name && item.id.startsWith('voice_')
-          );
-          
-          if (existingItemIndex >= 0) {
-            // Update existing voice order item
-            updatedOrders[existingItemIndex].quantity += voiceItem.quantity;
-          } else {
-            // Add new voice order item
-            updatedOrders.push({
-              id: voiceItem.id,
-              name: voiceItem.name,
-              price: voiceItem.price,
-              quantity: voiceItem.quantity
-            });
-          }
-        });
-        
-        return updatedOrders;
-      });
-    }
-  }, []);
-
-  const handleCartUpdate = useCallback((data: any) => {
-    console.log("handleCartUpdate called with data:", data);
-    if (data.cart && Array.isArray(data.cart)) {
-      console.log("Cart is valid array, mapping items:", data.cart);
-      const newCart = data.cart.map((item: any, index: number) => ({
-        id: `voice_cart_${index}`,
-        name: item.drink_name || item.name,
-        price: item.price || 5.50, // Default price, could be enhanced to lookup actual prices
-        quantity: item.quantity,
-        serving_name: item.serving_name
-      }));
-      console.log("Setting orders to:", newCart);
-      setOrders(newCart);
-    } else {
-      console.log("Cart data is invalid or not an array:", data);
-    }
-  }, []);
-
-  // Handle cart clear from voice assistant
-  const handleCartClear = useCallback(() => {
-    console.log("Clearing cart from voice command");
-    setOrders([]);
-  }, []);
-
-  // Handle inventory updates from voice assistant
-  const handleInventoryUpdate = useCallback((data: any) => {
-    console.log("handleInventoryUpdate called with data:", data);
-    if (data.drinks && Array.isArray(data.drinks)) {
-      console.log("Inventory is valid array, updating drinks:", data.drinks.length, "items");
-      setDrinks(data.drinks);
-      
-      // Extract unique categories from updated drinks
-      const uniqueCategories = [...new Set(data.drinks.map((drink: any) => drink.category))] as string[];
-      setCategories(uniqueCategories);
-      
-      // If inventory updated due to order completion, refresh the current view
-      // This helps keep all data in sync across tabs
-      window.dispatchEvent(new CustomEvent('inventoryUpdated', { detail: data }));
-    } else {
-      console.log("Inventory data is invalid or not an array:", data);
-    }
-  }, []);
-
-  // Initialize voice assistant
-  const { isListening, toggleListening, mode, wakeWordDetected } = useVoiceAssistant(
-    handleTranscript, 
-    handleOrderUpdate, 
-    handleCartUpdate, 
-    handleCartClear, 
-    handleInventoryUpdate
-  );
-
-  // old Vapi voice removed
+  const [volumeLevel, setVolumeLevel] = useState(1);
+  const [showMobileSearch, setShowMobileSearch] = useState(false)
 
   // Package options
   const packages = ["Silver Pkg", "Gold Pkg", "Platinum Pkg", "Others"]
@@ -167,23 +78,85 @@ export default function Home() {
       }
   }, [])
 
+  const handleNavigateToTab = (tab: string) => {
+    setCurrentTab(tab);
+    // You can also add logic here to scroll to the relevant section if your layout supports it
+    console.log(`Navigating to tab: ${tab}`);
+  };
+
   // Load drinks data
   useEffect(() => {
     fetchDrinks()
   }, [fetchDrinks])
+
+  // Debug orders state changes (keep minimal logging)
+  useEffect(() => {
+    console.log('Cart updated:', orders.length, 'items');
+  }, [orders])
+
+  // Sync with voice cart every 2 seconds
+  useEffect(() => {
+    const syncWithVoiceCart = async () => {
+      try {
+        const response = await fetch('/api/voice-cart');
+        if (response.ok) {
+          const voiceCartData = await response.json();
+          if (voiceCartData.success && voiceCartData.items.length > 0) {
+            // Merge voice cart items with current cart
+            setOrders(prevOrders => {
+              const mergedCart = [...prevOrders];
+              
+              voiceCartData.items.forEach((voiceItem: any) => {
+                const existingIndex = mergedCart.findIndex(item => String(item.id) === String(voiceItem.id));
+                if (existingIndex >= 0) {
+                  // Update existing item with voice cart quantity
+                  mergedCart[existingIndex] = voiceItem;
+                } else {
+                  // Add new item from voice cart
+                  mergedCart.push(voiceItem);
+                }
+              });
+              
+              return mergedCart;
+            });
+          }
+        }
+      } catch (error) {
+        console.error('Error syncing with voice cart:', error);
+      }
+    };
+
+    // Initial sync
+    syncWithVoiceCart();
+    
+    // Set up periodic sync
+    const interval = setInterval(syncWithVoiceCart, 2000);
+    
+    return () => clearInterval(interval);
+  }, [])
 
   // removed Vapi overlay logic
 
   // Add drink to order
   const addToOrder = (drink: any) => {
     setOrders((prevOrders) => {
-      const existingItem = prevOrders.find((item) => item.id === drink.id);
+      // Ensure ID comparison works properly by converting both to strings
+      const drinkId = String(drink.id);
+      const existingItem = prevOrders.find((item) => String(item.id) === drinkId);
+      
       if (existingItem) {
         return prevOrders.map((item) =>
-          item.id === drink.id ? { ...item, quantity: item.quantity + 1 } : item,
+          String(item.id) === drinkId ? { ...item, quantity: item.quantity + 1 } : item,
         );
       }
-      return [...prevOrders, { ...drink, quantity: 1 }];
+      
+      const newOrderItem = { 
+        id: drinkId, 
+        name: drink.name, 
+        price: drink.price, 
+        quantity: 1 
+      };
+      return [...prevOrders, newOrderItem];
     });
   };
 
@@ -227,7 +200,62 @@ export default function Home() {
     return () => calculateSubtotal() + calculateTax()
   }, [calculateSubtotal, calculateTax])
 
-  // Add completeOrder function
+  // Add save current order function
+  const saveCurrentOrder = () => {
+    if (orders.length === 0) {
+      toast({
+        title: "No Order to Save",
+        description: "Please add items to the order before saving.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    // Save order to localStorage as draft
+    const draftOrder = {
+      id: Date.now().toString(),
+      customer: customerName,
+      items: orders,
+      total: calculateTotal(),
+      timestamp: new Date().toISOString(),
+      status: 'draft'
+    }
+
+    const existingDrafts = JSON.parse(localStorage.getItem('draftOrders') || '[]')
+    existingDrafts.push(draftOrder)
+    localStorage.setItem('draftOrders', JSON.stringify(existingDrafts))
+
+    toast({
+      title: "Order Saved",
+      description: `Draft order saved for ${customerName}`,
+    })
+  }
+
+  // Add payment processing function
+  const processPayment = () => {
+    if (orders.length === 0) {
+      toast({
+        title: "No Items to Pay",
+        description: "Please add items to the order before processing payment.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    // Simulate payment processing
+    toast({
+      title: "Payment Processing",
+      description: `Processing payment of $${calculateTotal().toFixed(2)}...`,
+    })
+
+    // In a real app, you would integrate with a payment processor here
+    setTimeout(() => {
+      toast({
+        title: "Payment Successful",
+        description: "Payment has been processed successfully.",
+      })
+    }, 2000)
+  }
   const completeOrder = async () => {
     if (orders.length === 0) {
       return;
@@ -236,18 +264,14 @@ export default function Home() {
     try {
       // Convert UI order format to the format expected by the API
       const orderItems = orders.map(item => ({
-        // For UI orders, we need to find the serving option ID
-        // For now, we'll create a simplified order structure
-        drink_name: item.name,
+        id: item.id,
+        name: item.name,
         quantity: item.quantity,
         price: item.price,
-        // Note: This is a simplified approach. In a real system, 
-        // you'd need to map back to serving_option_id
       }));
 
       const orderData = {
         items: orderItems,
-        customerName: customerName,
         total: calculateTotal(),
         subtotal: calculateSubtotal(),
         tax: calculateTax()
@@ -255,15 +279,35 @@ export default function Home() {
 
       console.log('Completing order:', orderData);
 
-      // For now, we'll just clear the cart and show success
-      // In a real implementation, you'd send this to your order processing endpoint
-      setOrders([]);
-      
-      // Show success message
-      alert(`Order completed successfully! Total: $${calculateTotal().toFixed(2)}`);
-      
-      // Optionally switch to transactions tab to show the completed order
-      // setCurrentTab("transactions");
+      const response = await fetch('/api/orders', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(orderData),
+      });
+
+      const result = await response.json();
+
+      if (response.ok && result.success) {
+        // Clear the UI cart
+        setOrders([]);
+        
+        // Clear the voice cart as well
+        try {
+          await fetch('/api/voice-cart', { method: 'DELETE' });
+        } catch (error) {
+          console.error('Error clearing voice cart:', error);
+        }
+        
+        // Show success message
+        alert(`Order completed successfully! Order ID: ${result.orderId}`);
+        
+        // Optionally refresh drinks to show updated inventory
+        fetchDrinks();
+      } else {
+        throw new Error(result.error || 'Failed to complete order');
+      }
 
     } catch (error) {
       console.error('Error completing order:', error);
@@ -355,8 +399,7 @@ export default function Home() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
-      {/* Voice waveform overlay temporarily disabled */}
+    <div className="min-h-screen bg-gray-50 flex flex-col pb-20">
       {/* Top Navigation */}
       <div className="bg-white border-b border-gray-200 px-3 sm:px-6 py-3 sm:py-4 flex-shrink-0">
         <div className="flex items-center justify-between">
@@ -407,28 +450,41 @@ export default function Home() {
             </div>
 
             {/* Mobile Search Button */}
-            <Button variant="outline" size="icon" className="sm:hidden bg-transparent">
+            <Button 
+              variant="outline" 
+              size="icon" 
+              className="sm:hidden bg-transparent"
+              onClick={() => setShowMobileSearch(!showMobileSearch)}
+            >
               <Search className="h-4 w-4" />
             </Button>
 
             {/* Action Buttons */}
-            <Button variant="outline" className="hidden sm:flex px-4 lg:px-6 bg-transparent">
+            <Button 
+              variant="outline" 
+              className="hidden sm:flex px-4 lg:px-6 bg-transparent"
+              onClick={saveCurrentOrder}
+            >
               <Save className="h-4 w-4 mr-2" />
               <span className="hidden lg:inline">Save</span>
             </Button>
 
-            <Button className="px-4 lg:px-6 bg-yellow-400 hover:bg-yellow-500 text-black">
+            <Button 
+              className="px-4 lg:px-6 bg-yellow-400 hover:bg-yellow-500 text-black"
+              onClick={processPayment}
+            >
               <CreditCard className="h-4 w-4 mr-2" />
               <span className="hidden sm:inline">Pay</span>
             </Button>
-            
-            <VoiceAssistantButton 
-            onTranscript={handleTranscript} 
-            isListening={isListening}
-            toggleListening={toggleListening}
-            mode={mode}
-            wakeWordDetected={wakeWordDetected}
-          />
+
+            <Button 
+              className="px-4 lg:px-6 bg-black hover:bg-gray-800 text-[#FFD700]" 
+              disabled={orders.length === 0}
+              onClick={completeOrder}
+            >
+              <span className="hidden sm:inline">Complete Order</span>
+              <span className="sm:hidden">Complete</span>
+            </Button>
 
           </div>
         </div>
@@ -457,14 +513,12 @@ export default function Home() {
                 updateQuantity={updateQuantity}
                 total={calculateTotal()}
                 onCompleteOrder={completeOrder}
-                key={JSON.stringify(orders)}
               />
             </div>
           </>
         ) : currentTab === "items" ? (
           <div className="flex-1 p-3 sm:p-6 min-h-0">
             <ItemsView
-              drinks={drinks}
               onAddToOrder={addToOrder}
               searchQuery={searchQuery}
               onSearchChange={setSearchQuery}
@@ -481,65 +535,45 @@ export default function Home() {
           </div>
         ) : currentTab === "settings" ? (
           <div className="flex-1 p-3 sm:p-6 min-h-0">
-            <Card className="p-6">
-              <Form {...form}>
-                <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-                  <FormField
-                    control={form.control}
-                    name="tts_provider"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>TTS Provider</FormLabel>
-                        <Select onValueChange={field.onChange} defaultValue={field.value}>
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select provider" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            <SelectItem value="deepgram">Deepgram</SelectItem>
-                            <SelectItem value="elevenlabs">ElevenLabs</SelectItem>
-                            <SelectItem value="hume">Hume AI</SelectItem>
-                            <SelectItem value="rime">RIME LBS</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="tts_voice"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Voice Model</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value || ''}>
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select voice" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {voices.map((voice) => (
-                              <SelectItem key={voice.id} value={voice.id}>{voice.name}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <Button type="submit">Save Settings</Button>
-                </form>
-              </Form>
-            </Card>
+            <SettingsView />
           </div>
         ) : null}
       </div>
 
+      {/* Mobile Search Overlay */}
+      {showMobileSearch && (
+        <div className="fixed inset-0 bg-black/50 z-50 sm:hidden">
+          <div className="bg-white p-4 m-4 rounded-lg">
+            <div className="flex items-center gap-2 mb-4">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                <Input
+                  type="search"
+                  placeholder="Search drinks..."
+                  className="pl-10 w-full bg-gray-50 border-gray-200"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  autoFocus
+                />
+              </div>
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                onClick={() => setShowMobileSearch(false)}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="text-sm text-gray-500">
+              {searchQuery ? `Searching for "${searchQuery}"` : "Enter a drink name to search"}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Mobile Order Summary Overlay */}
       {showMobileOrder && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 md:hidden">
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-[60] md:hidden">
           <div className="absolute bottom-0 left-0 right-0 bg-white rounded-t-lg max-h-[80vh] overflow-hidden">
             <div className="flex items-center justify-between p-4 border-b">
               <h2 className="text-lg font-semibold">Current Order</h2>
@@ -560,8 +594,8 @@ export default function Home() {
         </div>
       )}
 
-      {/* Bottom Navigation */}
-      <div className="bg-white border-t border-gray-200 px-3 sm:px-6 py-2 sm:py-3 flex-shrink-0 safe-area-bottom">
+      {/* Bottom Navigation - Fixed */}
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-3 sm:px-6 py-2 sm:py-3 flex-shrink-0 safe-area-bottom z-50">
         <div className="flex items-center justify-center gap-4 sm:gap-8">
           <Button
             variant={currentTab === "menu" ? "default" : "ghost"}
@@ -617,6 +651,14 @@ export default function Home() {
       )}
 
       <Toaster />
+
+      {/* Voice Control Button - Fixed on bottom right */}
+      <div className="fixed bottom-4 right-4 z-50">
+        <VoiceControlButton 
+          onNavigateToTab={handleNavigateToTab}
+          currentTab={currentTab}
+        />
+      </div>
     </div>
   )
 }

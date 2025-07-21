@@ -5,36 +5,39 @@ import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Minus, Plus, Trash2 } from "lucide-react"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { VoiceControlButton } from "@/components/voice-control-button"
 
-export default function OrderPanel({ orders, removeFromOrder, updateQuantity, total, onCompleteOrder }) {
+interface OrderItem {
+  id: string
+  name: string
+  price: number
+  quantity: number
+}
+
+interface OrderPanelProps {
+  orders: OrderItem[]
+  removeFromOrder: (id: string) => void
+  updateQuantity: (id: string, quantity: number) => void
+  total: number
+  onCompleteOrder: () => void
+}
+
+export default function OrderPanel({ 
+  orders = [], 
+  removeFromOrder, 
+  updateQuantity, 
+  total = 0, 
+  onCompleteOrder 
+}: OrderPanelProps) {
   // Add debug logging
   useEffect(() => {
-    console.log("OrderPanel received orders:", orders)
-    console.log("Orders length:", orders?.length)
-    console.log("Orders type:", typeof orders, Array.isArray(orders))
-
     if (orders && orders.length > 0) {
-      console.log("First order item:", orders[0])
-    }
-
-    // Validate order data
-    const invalidItems = orders.filter(
-      (item) =>
-        !item.id ||
-        !item.name ||
-        typeof item.price !== "number" ||
-        isNaN(item.price) ||
-        typeof item.quantity !== "number" ||
-        isNaN(item.quantity),
-    )
-
-    if (invalidItems.length > 0) {
-      console.warn("OrderPanel received invalid items:", invalidItems)
+      console.log("Voice cart synced - items in cart:", orders.length);
     }
   }, [orders])
 
   // Add a function to safely format prices
-  const formatPrice = (price) => {
+  const formatPrice = (price: number): string => {
     if (typeof price !== "number" || isNaN(price)) {
       console.warn(`Invalid price value: ${price}`)
       return "0.00"
@@ -60,7 +63,7 @@ export default function OrderPanel({ orders, removeFromOrder, updateQuantity, to
               {orders.map((item) => (
                 <div
                   key={item.id}
-                  className="flex items-center justify-between p-2 bg-[#f8fafc] rounded-md border border-[#e2e8f0]"
+                  className="flex items-center justify-between p-2"
                 >
                   <div className="flex-grow">
                     <h3 className="font-medium text-black text-xs">{item.name}</h3>
@@ -112,26 +115,22 @@ export default function OrderPanel({ orders, removeFromOrder, updateQuantity, to
           </span>
         </div>
 
-        <div className="flex gap-2 w-full">
-          <Button
-            variant="outline"
-            className="flex-1 border-red-300 hover:bg-red-50 text-red-500"
-            disabled={orders.length === 0}
-            onClick={() => {
-              if (window.confirm("Are you sure you want to void this order?")) {
-                removeFromOrder("all")
-              }
-            }}
-          >
-            Void Order
-          </Button>
+        {/* Complete Order Button */}
+        {orders.length > 0 && (
           <Button 
-            className="flex-1 bg-black hover:bg-gray-800 text-[#FFD700]" 
-            disabled={orders.length === 0}
             onClick={onCompleteOrder}
+            className="w-full mb-3 bg-green-600 hover:bg-green-700 text-white"
           >
             Complete Order
           </Button>
+        )}
+
+        {/* Voice Control Button - positioned symmetrically above the divider line */}
+        <div className="flex justify-center w-full mb-3 relative">
+          <div className="absolute top-6 left-0 right-0 h-px bg-[#e2e8f0]"></div>
+          <div className="relative z-10 bg-white px-2">
+            <VoiceControlButton />
+          </div>
         </div>
       </CardFooter>
     </Card>

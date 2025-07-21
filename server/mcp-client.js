@@ -10,9 +10,11 @@ class MCPClient {
         this.pendingRequests = new Map();
         this.requestId = 0;
         this.reconnectAttempts = 0;
-        this.maxReconnectAttempts = 3;
+        this.maxReconnectAttempts = 5; // Increased max attempts
+        this.reconnectDelay = 1000; // Initial delay in ms
         this.responseBuffer = '';
         this.connectionTimeout = null;
+        this.heartbeatInterval = null;
     }
 
     getMcpProcess() {
@@ -47,6 +49,7 @@ class MCPClient {
 
             this.setupEventHandlers();
             this.waitForConnection();
+            this.startHeartbeat();
         } catch (error) {
             console.error('Failed to start MCP process:', error);
             this.handleConnectionError(error);
@@ -111,6 +114,7 @@ class MCPClient {
             if (response.type === 'ready') {
                 this.isConnected = true;
                 this.reconnectAttempts = 0;
+                this.reconnectDelay = 1000; // Reset delay
                 console.log('MCP server is ready');
                 this.processRequestQueue();
                 return;
@@ -153,6 +157,10 @@ class MCPClient {
             clearTimeout(this.connectionTimeout);
         }
         
+        if (this.heartbeatInterval) {
+            clearInterval(this.heartbeatInterval);
+        }
+        
         // Reject all pending requests
         this.pendingRequests.forEach((request, requestId) => {
             clearTimeout(request.timeout);
@@ -160,13 +168,14 @@ class MCPClient {
         });
         this.pendingRequests.clear();
         
-        // Attempt reconnection if under limit
+        // Attempt reconnection with exponential backoff
         if (this.reconnectAttempts < this.maxReconnectAttempts) {
             this.reconnectAttempts++;
-            console.log(`Attempting MCP reconnection ${this.reconnectAttempts}/${this.maxReconnectAttempts}`);
+            console.log(`Attempting MCP reconnection ${this.reconnectAttempts}/${this.maxReconnectAttempts} in ${this.reconnectDelay}ms`);
             setTimeout(() => {
                 this.startMcpProcess();
-            }, 2000 * this.reconnectAttempts); // Exponential backoff
+                this.reconnectDelay = Math.min(this.reconnectDelay * 2, 16000); // Max 16s
+            }, this.reconnectDelay);
         } else {
             console.error('Max MCP reconnection attempts reached');
         }
@@ -177,7 +186,7 @@ class MCPClient {
         // Add delay before processing queue
         setTimeout(() => {
             this.processRequestQueue();
-        }, 1000);
+        }, 2000); // Increased delay for lock resolution
     }
 
     handleProcessExit(code) {
@@ -185,10 +194,7 @@ class MCPClient {
         
         if (code !== 0 && this.reconnectAttempts < this.maxReconnectAttempts) {
             console.log('MCP process crashed, attempting restart');
-            this.reconnectAttempts++;
-            setTimeout(() => {
-                this.startMcpProcess();
-            }, 1000);
+            this.handleConnectionError(new Error('Process crashed'));
         }
     }
 
@@ -197,6 +203,23 @@ class MCPClient {
             const queuedRequest = this.requestQueue.shift();
             this.sendRequest(queuedRequest.request, queuedRequest.resolve, queuedRequest.reject);
         }
+    }
+
+    startHeartbeat() {
+        if (this.heartbeatInterval) {
+            clearInterval(this.heartbeatInterval);
+        }
+        this.heartbeatInterval = setInterval(async () => {
+            try {
+                const health = await this.healthCheck();
+                if (!health.healthy) {
+                    throw new Error('Health check failed');
+                }
+            } catch (error) {
+                console.warn('MCP heartbeat failed:', error);
+                this.handleConnectionError(error);
+            }
+        }, 30000); // Check every 30 seconds
     }
 
     async invokeMcpTool(action, params = {}, timeout = 10000) {
@@ -318,10 +341,37 @@ class MCPClient {
         }
     }
 
+    async paymentSelect(clientId, method) {
+        try {
+            const result = await this.invokeMcpTool('payment_select', { 
+                clientId, 
+                method 
+            });
+            return result;
+        } catch (error) {
+            console.error('Error selecting payment:', error);
+            return { error: `Failed to select payment method: ${error.message}` };
+        }
+    }
+
+    async paymentProcess(clientId) {
+        try {
+            const result = await this.invokeMcpTool('payment_process', { clientId });
+            return result;
+        } catch (error) {
+            console.error('Error processing payment:', error);
+            return { error: `Failed to process payment: ${error.message}` };
+        }
+    }
+
     // Cleanup method
     cleanup() {
         if (this.connectionTimeout) {
             clearTimeout(this.connectionTimeout);
+        }
+        
+        if (this.heartbeatInterval) {
+            clearInterval(this.heartbeatInterval);
         }
         
         this.pendingRequests.forEach((request) => {
