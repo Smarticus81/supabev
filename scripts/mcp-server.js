@@ -131,6 +131,15 @@ class MCPServer {
                     return this.paymentSelect(params);
                 case 'payment_process':
                     return this.paymentProcess(params);
+                
+                // Advanced inventory tools
+                case 'update_drink_inventory':
+                    return await this.updateDrinkInventory(params);
+                case 'bulk_update_inventory':
+                    return await this.bulkUpdateInventory(params);
+                case 'get_low_inventory_bottles':
+                    return await this.getLowInventoryBottles(params);
+                
                 default:
                     throw new Error(`Unknown tool: ${toolName}`);
             }
@@ -664,16 +673,16 @@ class MCPServer {
 
     getTtsConfig() {
         try {
-            // Return default OpenAI configuration since we're using NeonDB only
+            // Return optimized OpenAI configuration for fast, unlimited responses
             const finalConfig = { 
                 tts_provider: 'openai', 
                 tts_voice: 'alloy',
-                rate: 1.0,
-                temperature: 0.5,
-                vad_threshold: 0.5,
-                prefix_padding: 200,
-                silence_duration: 300,
-                max_tokens: 1500,
+                rate: 1.4, // Faster speech speed (1.4x normal)
+                temperature: 0.6, // Minimum required by OpenAI Realtime API
+                vad_threshold: 0.3, // More sensitive voice detection
+                prefix_padding: 100, // Reduced padding for faster response
+                silence_duration: 200, // Shorter silence detection for quicker responses
+                max_tokens: 2500, // Increased token limit
                 response_style: 'efficient',
                 audio_gain: 1.0,
                 noise_suppression: true,
@@ -742,6 +751,106 @@ class MCPServer {
             method,
             message: 'Payment processed successfully'
         };
+    }
+
+    // Advanced inventory management tools
+    async updateDrinkInventory(params) {
+        const { drink_name, quantity_change, reason = 'Voice inventory update' } = params;
+        
+        try {
+            // Use the consolidated inventory function to get current total
+            const currentResult = await this.db.execute(
+                sql`SELECT * FROM get_drink_inventory(${drink_name})`
+            );
+            
+            if (!currentResult.rows.length) {
+                return { success: false, error: 'Drink not found' };
+            }
+            
+            const currentDrink = currentResult.rows[0];
+            const newTotalInventory = Math.max(0, currentDrink.total_inventory + quantity_change);
+            
+            // For simplicity, update the first entry with the new total inventory
+            // and set others to 0 (consolidation approach)
+            const firstDrinkResult = await this.db.execute(
+                sql`SELECT id FROM drinks WHERE LOWER(name) = LOWER(${drink_name}) AND is_active = true ORDER BY created_at ASC LIMIT 1`
+            );
+            
+            if (firstDrinkResult.rows.length > 0) {
+                const firstDrinkId = firstDrinkResult.rows[0].id;
+                
+                // Set all other entries to 0
+                await this.db.execute(
+                    sql`UPDATE drinks SET inventory = 0 WHERE LOWER(name) = LOWER(${drink_name}) AND id != ${firstDrinkId} AND is_active = true`
+                );
+                
+                // Set the first entry to the new total
+                await this.db.execute(
+                    sql`UPDATE drinks SET inventory = ${newTotalInventory}, updated_at = NOW() WHERE id = ${firstDrinkId}`
+                );
+            }
+            
+            return {
+                success: true,
+                message: `Updated ${drink_name} inventory`,
+                previous_inventory: currentDrink.total_inventory,
+                new_inventory: newTotalInventory,
+                change: quantity_change
+            };
+        } catch (error) {
+            return { success: false, error: error.message };
+        }
+    }
+
+    async bulkUpdateInventory(params) {
+        const { updates } = params;
+        const results = [];
+        
+        for (const update of updates) {
+            const result = await this.updateDrinkInventory(update);
+            results.push({
+                drink_name: update.drink_name,
+                ...result
+            });
+        }
+        
+        return {
+            success: true,
+            message: 'Bulk inventory update completed',
+            results,
+            updated: results.filter(r => r.success).length,
+            failed: results.filter(r => !r.success).length
+        };
+    }
+
+    async getLowInventoryBottles(params) {
+        const { threshold = 5 } = params;
+        
+        try {
+            // Use consolidated inventory to avoid duplicates
+            const result = await this.db.execute(
+                sql`
+                    SELECT 
+                        name, 
+                        SUM(inventory) as inventory,
+                        category
+                    FROM drinks 
+                    WHERE is_active = true
+                    GROUP BY name, category
+                    HAVING SUM(inventory) <= ${threshold}
+                    ORDER BY SUM(inventory) ASC
+                `
+            );
+            
+            return {
+                success: true,
+                low_inventory_drinks: result.rows,
+                count: result.rows.length,
+                threshold
+            };
+        } catch (error) {
+            return { success: false, error: error.message };
+        }
     }
 
     sendResponse(response) {

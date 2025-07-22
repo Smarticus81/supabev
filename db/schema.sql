@@ -250,9 +250,9 @@ INSERT OR IGNORE INTO payment_methods (name, type, is_active) VALUES
 
 -- Insert default system configuration
 INSERT OR IGNORE INTO system_config (config_key, config_value, config_type, description) VALUES 
-('tts_provider', 'elevenlabs', 'string', 'Text-to-speech provider'),
-('tts_voice_id', 'pNInz6obpgDQGcFmaJgB', 'string', 'Default TTS voice ID'),
-('tts_speed', '1.0', 'number', 'TTS playback speed'),
+('tts_provider', 'openai', 'string', 'Text-to-speech provider'),
+('tts_voice_id', 'alloy', 'string', 'Default TTS voice ID'),
+('tts_speed', '1.4', 'number', 'TTS playback speed (1.4x faster)'),
 ('default_tax_rate', '0.08', 'number', 'Default tax rate for orders'),
 ('low_inventory_threshold', '5', 'number', 'Alert threshold for low inventory'),
 ('business_hours_start', '10:00', 'string', 'Business opening time'),

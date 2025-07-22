@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useMemo, useCallback } from "react"
-import { Search, Save, CreditCard, Menu, Users, Receipt, Package, X, Settings } from "lucide-react"
+import { Search, Save, CreditCard, Menu, Users, Receipt, Package, X, Settings, Calendar } from "lucide-react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
@@ -13,6 +13,8 @@ import DatabaseViewer from "@/components/database-viewer"
 import ItemsView from "@/components/items-view"
 import TabsView from "@/components/tabs-view"
 import TransactionsView from "@/components/transactions-view"
+import StaffView from "@/components/staff-view"
+import EventsView from "@/components/events-view"
 import { VoiceControlButton } from "@/components/voice-control-button"
 import { VoiceDebug } from "@/components/voice-debug"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -540,6 +542,14 @@ export default function Home() {
           <div className="flex-1 p-3 sm:p-6 min-h-0">
             <TransactionsView />
           </div>
+        ) : currentTab === "staff" ? (
+          <div className="flex-1 p-3 sm:p-6 min-h-0">
+            <StaffView />
+          </div>
+        ) : currentTab === "events" ? (
+          <div className="flex-1 p-3 sm:p-6 min-h-0">
+            <EventsView />
+          </div>
         ) : currentTab === "settings" ? (
           <div className="flex-1 p-3 sm:p-6 min-h-0">
             <SettingsView />
@@ -614,12 +624,30 @@ export default function Home() {
           </Button>
 
           <Button
+            variant={currentTab === "staff" ? "default" : "ghost"}
+            className="flex flex-col items-center gap-1 h-auto py-2 px-3 sm:px-4 min-w-0"
+            onClick={() => setCurrentTab("staff")}
+          >
+            <Users className="h-5 w-5" />
+            <span className="text-xs">Staff</span>
+          </Button>
+
+          <Button
             variant={currentTab === "tabs" ? "default" : "ghost"}
             className="flex flex-col items-center gap-1 h-auto py-2 px-3 sm:px-4 min-w-0"
             onClick={() => setCurrentTab("tabs")}
           >
-            <Users className="h-5 w-5" />
+            <Package className="h-5 w-5" />
             <span className="text-xs">Tabs</span>
+          </Button>
+
+          <Button
+            variant={currentTab === "events" ? "default" : "ghost"}
+            className="flex flex-col items-center gap-1 h-auto py-2 px-3 sm:px-4 min-w-0"
+            onClick={() => setCurrentTab("events")}
+          >
+            <Calendar className="h-5 w-5" />
+            <span className="text-xs">Events</span>
           </Button>
 
           <Button

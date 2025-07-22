@@ -322,6 +322,11 @@ export default function ItemsView({ onAddToOrder, searchQuery, onSearchChange, o
                   <TableHead className="cursor-pointer text-right" onClick={() => handleSort("price")}>
                     Price {sortBy === "price" && (sortDirection === "asc" ? "↑" : "↓")}
                   </TableHead>
+                  <TableHead className="text-right">Cost</TableHead>
+                  <TableHead className="text-right">Profit</TableHead>
+                  <TableHead className="cursor-pointer text-center" onClick={() => handleSort("popularity_score")}>
+                    Popularity {sortBy === "popularity_score" && (sortDirection === "asc" ? "↑" : "↓")}
+                  </TableHead>
                   <TableHead className="w-[300px] cursor-pointer" onClick={() => handleSort("inventory")}>
                     Stock Level {sortBy === "inventory" && (sortDirection === "asc" ? "↑" : "↓")}
                   </TableHead>
@@ -343,9 +348,24 @@ export default function ItemsView({ onAddToOrder, searchQuery, onSearchChange, o
                         <Badge variant="outline">{drink.category}</Badge>
                       </TableCell>
                       <TableCell>
-                        <Badge variant="outline">{drink.subcategory}</Badge>
+                        <Badge variant="outline">{drink.subcategory || 'N/A'}</Badge>
                       </TableCell>
                       <TableCell className="text-right">{formatPrice(drink.price)}</TableCell>
+                      <TableCell className="text-right">
+                        {drink.cost_per_unit ? formatPrice(drink.cost_per_unit) : 'N/A'}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {drink.profit_margin ? (
+                          <span className={drink.profit_margin > 0.5 ? 'text-green-600 font-medium' : drink.profit_margin > 0.3 ? 'text-yellow-600' : 'text-red-600'}>
+                            {(drink.profit_margin * 100).toFixed(1)}%
+                          </span>
+                        ) : 'N/A'}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <Badge variant={drink.popularity_score > 75 ? 'default' : drink.popularity_score > 50 ? 'secondary' : 'outline'}>
+                          {drink.popularity_score || 0}
+                        </Badge>
+                      </TableCell>
                       <TableCell>
                         <div className="space-y-1">
                           <div className="flex items-center justify-between">

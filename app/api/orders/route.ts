@@ -4,33 +4,62 @@ import { desc, eq } from 'drizzle-orm';
 
 export async function GET() {
   try {
-    // Get orders from Neon database
-    const allOrders = await db.select().from(orders).orderBy(desc(orders.created_at)).limit(50);
+    // Get orders from Neon database with all new fields
+    const allOrders = await db.select({
+      id: orders.id,
+      customer_id: orders.customer_id,
+      staff_id: orders.staff_id,
+      event_booking_id: orders.event_booking_id,
+      order_number: orders.order_number,
+      items: orders.items,
+      subtotal: orders.subtotal,
+      tax_amount: orders.tax_amount,
+      total: orders.total,
+      payment_method: orders.payment_method,
+      payment_status: orders.payment_status,
+      status: orders.status,
+      table_number: orders.table_number,
+      notes: orders.notes,
+      discount_amount: orders.discount_amount,
+      tip_amount: orders.tip_amount,
+      created_at: orders.created_at,
+      updated_at: orders.updated_at,
+    }).from(orders).orderBy(desc(orders.created_at)).limit(50);
 
     // Format orders for display
     const formattedOrders = allOrders.map(order => {
-      const items = JSON.parse(order.items);
+      const items = Array.isArray(order.items) ? order.items : JSON.parse(order.items || '[]');
       const formattedItems = items.map((item: any) => 
         `${item.name} x${item.quantity}`
       );
 
-      // Calculate subtotal and tax (assuming 8.25% tax rate)
-      const total = order.total / 100; // Convert from cents to dollars
-      const subtotal = total / 1.0825; // Remove 8.25% tax
-      const tax = total - subtotal;
+      // Use actual subtotal and tax from database, fallback to calculation if needed
+      const total = (order.total || 0) / 100; // Convert from cents to dollars
+      const subtotal = order.subtotal ? order.subtotal / 100 : total / 1.0825;
+      const tax = order.tax_amount ? order.tax_amount / 100 : total - subtotal;
+      const discount = order.discount_amount ? order.discount_amount / 100 : 0;
+      const tip = order.tip_amount ? order.tip_amount / 100 : 0;
 
       return {
-        id: `TXN-${order.id.toString().padStart(3, '0')}`,
-        customerName: 'Guest', // Default since we don't store customer name in orders yet
+        id: order.order_number || `TXN-${order.id.toString().padStart(3, '0')}`,
+        customerName: order.customer_id ? `Customer #${order.customer_id}` : 'Guest',
         items: formattedItems,
         total: total,
         tax: tax,
         subtotal: subtotal,
-        paymentMethod: 'Credit Card', // Default
+        discount: discount,
+        tip: tip,
+        paymentMethod: order.payment_method || 'Credit Card',
+        paymentStatus: order.payment_status || 'completed',
         status: order.status,
+        tableNumber: order.table_number,
+        notes: order.notes,
         timestamp: new Date(order.created_at || '').toLocaleString(),
-        server: 'Bev AI', // Default server name
-        rawItems: items // Include raw items for detailed view
+        server: order.staff_id ? `Staff #${order.staff_id}` : 'Bev AI',
+        eventBookingId: order.event_booking_id,
+        rawItems: items,
+        created_at: order.created_at,
+        updated_at: order.updated_at
       };
     });
 

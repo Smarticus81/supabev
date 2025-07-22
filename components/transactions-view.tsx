@@ -322,20 +322,25 @@ export default function TransactionsView() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="cursor-pointer" onClick={() => handleSort("date")}>
-                    Date {sortBy === "date" && (sortDirection === "asc" ? "↑" : "↓")}
+                  <TableHead className="cursor-pointer" onClick={() => handleSort("id")}>
+                    Order ID {sortBy === "id" && (sortDirection === "asc" ? "↑" : "↓")}
                   </TableHead>
-                  <TableHead>Time</TableHead>
                   <TableHead className="cursor-pointer" onClick={() => handleSort("customer")}>
                     Customer {sortBy === "customer" && (sortDirection === "asc" ? "↑" : "↓")}
                   </TableHead>
                   <TableHead className="cursor-pointer" onClick={() => handleSort("items")}>
                     Items {sortBy === "items" && (sortDirection === "asc" ? "↑" : "↓")}
                   </TableHead>
+                  <TableHead className="text-right">Subtotal</TableHead>
+                  <TableHead className="text-right">Tax</TableHead>
                   <TableHead className="cursor-pointer text-right" onClick={() => handleSort("total")}>
                     Total {sortBy === "total" && (sortDirection === "asc" ? "↑" : "↓")}
                   </TableHead>
                   <TableHead>Payment</TableHead>
+                  <TableHead>Server</TableHead>
+                  <TableHead className="cursor-pointer" onClick={() => handleSort("date")}>
+                    Date {sortBy === "date" && (sortDirection === "asc" ? "↑" : "↓")}
+                  </TableHead>
                   <TableHead>Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -343,33 +348,67 @@ export default function TransactionsView() {
                 {filteredTransactions.map((transaction) => (
                   <TableRow key={transaction.id}>
                     <TableCell className="font-medium">
-                      {formatShortDate(transaction.created_at)}
+                      {transaction.id}
                     </TableCell>
                     <TableCell>
-                      {formatTime(transaction.created_at)}
-                    </TableCell>
-                    <TableCell>
-                      {transaction.customer_name || "Walk-in Customer"}
+                      {transaction.customerName || "Walk-in Customer"}
                     </TableCell>
                     <TableCell>
                       <div className="space-y-1">
                         <div className="text-sm font-medium">
-                          {transaction.items?.length || 0} items
+                          {transaction.rawItems?.length || 0} items
                         </div>
-                        {transaction.items && transaction.items.length > 0 && (
+                        {transaction.rawItems && transaction.rawItems.length > 0 && (
                           <div className="text-xs text-gray-500 truncate max-w-[200px]">
-                            {transaction.items.map((item: any) => item.name).join(", ")}
+                            {transaction.rawItems.map((item: any) => item.name).join(", ")}
                           </div>
                         )}
                       </div>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {formatCurrency(transaction.subtotal || 0)}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {formatCurrency(transaction.tax || 0)}
                     </TableCell>
                     <TableCell className="text-right font-semibold">
                       {formatCurrency(transaction.total || 0)}
                     </TableCell>
                     <TableCell>
-                      <Badge variant="outline" className="bg-green-50 text-green-700">
-                        Cash
-                      </Badge>
+                      <div className="space-y-1">
+                        <Badge variant="outline" className={
+                          transaction.paymentStatus === 'completed' ? 'bg-green-50 text-green-700' :
+                          transaction.paymentStatus === 'pending' ? 'bg-yellow-50 text-yellow-700' :
+                          'bg-red-50 text-red-700'
+                        }>
+                          {transaction.paymentMethod || 'Cash'}
+                        </Badge>
+                        {transaction.paymentStatus && (
+                          <div className="text-xs text-gray-500">
+                            {transaction.paymentStatus}
+                          </div>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="text-sm">
+                        {transaction.server || 'Bev AI'}
+                      </div>
+                      {transaction.tableNumber && (
+                        <div className="text-xs text-gray-500">
+                          Table {transaction.tableNumber}
+                        </div>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <div className="space-y-1">
+                        <div className="text-sm font-medium">
+                          {formatShortDate(transaction.created_at || transaction.timestamp)}
+                        </div>
+                        <div className="text-xs text-gray-500">
+                          {formatTime(transaction.created_at || transaction.timestamp)}
+                        </div>
+                      </div>
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">

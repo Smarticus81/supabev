@@ -199,16 +199,22 @@ export class VoiceAgentService {
 
       const total = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
 
-      // Create order
+      // Create order with proper schema
+      const subtotal = Math.floor(total * 0.926); // Approximate subtotal before tax
+      const tax_amount = total - subtotal;
+      
       const orderData: NewOrder = {
-        items: JSON.stringify(cart.map(item => ({
+        items: cart.map(item => ({
           drink_id: item.drink_id,
           name: item.name,
           quantity: item.quantity,
           price: item.price
-        }))),
+        })),
+        subtotal,
+        tax_amount,
         total,
-        status: 'completed'
+        status: 'completed',
+        payment_status: 'completed'
       };
 
       const [newOrder] = await db.insert(orders).values(orderData).returning();
@@ -242,16 +248,28 @@ export class VoiceAgentService {
   // 🔍 SEARCH & INVENTORY
   async searchDrinks(query: string) {
     try {
-      const results = await db.select()
-        .from(drinks)
-        .where(
-          sql`LOWER(${drinks.name}) LIKE LOWER(${`%${query}%`}) OR LOWER(${drinks.category}) LIKE LOWER(${`%${query}%`})`
-        )
-        .limit(10);
+      // Use consolidated inventory query to avoid duplicates
+      const results = await db.execute(
+        sql`
+          SELECT 
+            MIN(id) as id,
+            name,
+            category,
+            MIN(price) as price,
+            SUM(inventory) as inventory,
+            bool_and(is_active) as is_active
+          FROM drinks
+          WHERE (LOWER(name) LIKE LOWER(${`%${query}%`}) OR LOWER(category) LIKE LOWER(${`%${query}%`}))
+          AND is_active = true
+          GROUP BY name, category
+          ORDER BY SUM(inventory) DESC
+          LIMIT 10
+        `
+      );
 
       return {
         success: true,
-        drinks: results.map(drink => ({
+        drinks: results.rows.map(drink => ({
           id: drink.id,
           name: drink.name,
           category: drink.category,
@@ -272,25 +290,24 @@ export class VoiceAgentService {
   async getInventoryStatus(drink_name?: string) {
     try {
       if (drink_name) {
-        const drink = await db.select()
-          .from(drinks)
-          .where(
-            sql`LOWER(${drinks.name}) LIKE LOWER(${`%${drink_name}%`})`
-          )
-          .limit(1);
+        // Use the new database function for consolidated inventory
+        const result = await db.execute(
+          sql`SELECT * FROM get_drink_inventory(${drink_name})`
+        );
 
-        if (!drink.length) {
+        if (!result.rows.length) {
           return {
             success: false,
             message: `Drink "${drink_name}" not found`
           };
         }
 
+        const drink = result.rows[0];
         return {
           success: true,
-          drink: drink[0].name,
-          inventory: drink[0].inventory,
-          status: drink[0].inventory > 5 ? 'good' : drink[0].inventory > 0 ? 'low' : 'out_of_stock'
+          drink: drink.name,
+          inventory: drink.total_inventory,
+          status: drink.status
         };
       }
 

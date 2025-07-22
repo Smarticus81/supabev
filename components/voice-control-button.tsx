@@ -99,16 +99,16 @@ export function VoiceControlButton({
   const [isProcessingFunction, setIsProcessingFunction] = useState(false);
   const [queuedResponse, setQueuedResponse] = useState<string | null>(null);
   
-  // Voice configuration state
+  // Voice configuration state - Optimized for speed and no rate limits
   const [voiceConfig, setVoiceConfig] = useState({
     provider: 'openai',
     voice: 'alloy',
-    rate: 1.0,
-    temperature: 0.5,
-    vad_threshold: 0.5,
-    prefix_padding: 200,
-    silence_duration: 300,
-    max_tokens: 1500,
+    rate: 1.4, // Faster speech speed (1.4x normal)
+    temperature: 0.6, // Minimum required by OpenAI Realtime API
+    vad_threshold: 0.3, // More sensitive voice detection
+    prefix_padding: 100, // Reduced padding for faster response
+    silence_duration: 200, // Shorter silence detection for quicker responses
+    max_tokens: 2500, // Increased token limit
     response_style: 'efficient',
     audio_gain: 1.0,
     noise_suppression: true,
@@ -135,7 +135,7 @@ export function VoiceControlButton({
     timestamp?: number;
     priority?: 'high' | 'medium' | 'low';
   }>>([]);
-  const speculativeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const speculativeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isProcessingAudioRef = useRef<boolean>(false);
 
   // Wake word detection state
@@ -572,6 +572,19 @@ Bev: "Your top seller this week is the Premium Whiskey with 47 units sold."
 - Avoid unnecessary pleasantries during orders
 - Be direct and efficient
 
+🔧 FUNCTION USAGE - CRITICAL:
+- ALWAYS use functions for ANY business request
+- Inventory questions → use get_inventory_status
+- Cart operations → use add_drink_to_cart, show_cart, etc.
+- Order inquiries → use get_orders_list, get_order_details
+- Analytics requests → use get_order_analytics, get_profit_margins
+- Event inquiries → use list_event_packages, get_event_bookings
+- Staff questions → use get_current_staff, get_staff_permissions
+- Financial data → use get_payment_methods, get_tax_report
+
+NEVER provide generic responses when functions are available!
+If a user asks about business data, IMMEDIATELY call the appropriate function.
+
 Remember: Create the perfect illusion of instant response while maintaining natural conversation flow!`,
         voice: voiceConfig.voice,
         input_audio_format: 'pcm16',
@@ -586,6 +599,10 @@ Remember: Create the perfect illusion of instant response while maintaining natu
           silence_duration_ms: voiceConfig.silence_duration
         },
         max_response_output_tokens: voiceConfig.max_tokens,
+        // Optimizations for speed and unlimited usage
+        temperature: voiceConfig.temperature,
+        modalities: ['text', 'audio'], // Enable both text and audio
+        tool_choice: 'auto', // Allow automatic tool selection
         tools: [
           {
             type: "function",
@@ -1396,11 +1413,11 @@ Remember: Create the perfect illusion of instant response while maintaining natu
                   await stopListening();
                   setTimeout(() => {
                     startWakeWordDetection();
-                  }, 1000); // Short delay after AI finishes
+                  }, 200); // Reduced delay for faster response
                 } catch (error) {
                   console.error('❌ Error returning to wake word mode:', error);
                 }
-              }, 1000); // Short delay after AI finishes
+              }, 200); // Reduced delay for faster response
             };
             
             waitForAIToFinish();
@@ -1489,13 +1506,13 @@ Remember: Create the perfect illusion of instant response while maintaining natu
         if (currentFunctionCall.current) {
           console.log('🔧 Executing function call:', currentFunctionCall.current.name);
           
-          // Execute the function call with proper function name
-          fetch('/api/mcp/execute', {
+          // Execute the function call with proper function name using voice-advanced API
+          fetch('/api/voice-advanced', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               tool: currentFunctionCall.current.name, // Use 'tool' instead of 'name'
-              tool_input: parsedArguments
+              parameters: parsedArguments // Use 'parameters' instead of 'tool_input'
             })
           })
           .then(response => response.json())
@@ -1593,6 +1610,12 @@ Remember: Create the perfect illusion of instant response while maintaining natu
 
       case 'rate_limits.updated':
         console.log('📊 Rate limits updated:', message.rate_limits);
+        // Log rate limits but don't enforce them - we want unlimited usage
+        if (message.rate_limits && message.rate_limits.length > 0) {
+          message.rate_limits.forEach((limit: any) => {
+            console.log(`🚀 Rate limit for ${limit.name}: ${limit.remaining}/${limit.limit} remaining`);
+          });
+        }
         break;
 
       case 'error':
@@ -1842,7 +1865,7 @@ Remember: Create the perfect illusion of instant response while maintaining natu
           // Start full conversation mode
           setTimeout(() => {
             startFullConversationMode();
-          }, 500); // Small delay to let wake ack sound play
+          }, 100); // Minimal delay for immediate response
         }
       };
       
@@ -2025,10 +2048,17 @@ Remember: Create the perfect illusion of instant response while maintaining natu
     return;
     
     // Check if WebRTC connection exists (more lenient check)
-    if (!peerConnectionRef.current || peerConnectionRef.current.connectionState === 'closed' || peerConnectionRef.current.connectionState === 'failed') {
-      console.log('⚠️ Speculative speech not played: no valid connection');
+    const connection = peerConnectionRef.current;
+    if (!connection) {
+      console.log('⚠️ Speculative speech not played: no connection');
       return;
     }
+    
+    if (connection.connectionState === 'closed' || connection.connectionState === 'failed') {
+      console.log('⚠️ Speculative speech not played: connection closed/failed');
+      return;
+    }
+    
     const sentence = getSpeculativeSentence(functionName);
     console.log(`🎭 Playing speculative sentence for ${functionName}: "${sentence}"`);
 
@@ -2258,12 +2288,12 @@ Remember: Create the perfect illusion of instant response while maintaining natu
   // updateCartDisplay function must remain here, it was accidentally removed.
   const updateCartDisplay = async () => {
     try {
-      const response = await fetch('/api/mcp/execute', {
+      const response = await fetch('/api/voice-advanced', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           tool: 'show_cart',
-          tool_input: {}
+          parameters: {} // Use 'parameters' instead of 'tool_input'
         })
       });
       

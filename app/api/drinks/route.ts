@@ -19,12 +19,24 @@ export async function GET() {
         id: drinks.id,
         name: drinks.name,
         category: drinks.category,
+        subcategory: drinks.subcategory,
         price: drinks.price,
         static_inventory: drinks.inventory,
         total_remaining_ml: inventorySubQuery.total_remaining_ml,
+        unit_volume_oz: drinks.unit_volume_oz,
+        cost_per_unit: drinks.cost_per_unit,
+        profit_margin: drinks.profit_margin,
+        popularity_score: drinks.popularity_score,
+        tax_category_id: drinks.tax_category_id,
+        image_url: drinks.image_url,
+        description: drinks.description,
+        is_active: drinks.is_active,
+        created_at: drinks.created_at,
+        updated_at: drinks.updated_at,
       })
       .from(drinks)
       .leftJoin(inventorySubQuery, eq(drinks.id, inventorySubQuery.drink_id))
+      .where(eq(drinks.is_active, true))
       .orderBy(asc(drinks.category), asc(drinks.name));
 
     // Group drinks by name and consolidate duplicates
@@ -40,14 +52,31 @@ export async function GET() {
         existing.total_remaining_ml += drink.total_remaining_ml || 0;
         // Use the lowest price (better for customers)
         existing.price = Math.min(existing.price, drink.price);
+        // Update other fields with latest values
+        existing.unit_volume_oz = drink.unit_volume_oz || existing.unit_volume_oz;
+        existing.cost_per_unit = drink.cost_per_unit || existing.cost_per_unit;
+        existing.profit_margin = drink.profit_margin || existing.profit_margin;
+        existing.popularity_score = Math.max(existing.popularity_score, drink.popularity_score || 0);
+        existing.updated_at = drink.updated_at > existing.updated_at ? drink.updated_at : existing.updated_at;
       } else {
         drinkGroups.set(key, {
           id: drink.id,
           name: drink.name,
           category: drink.category,
+          subcategory: drink.subcategory,
           price: drink.price,
           static_inventory: drink.static_inventory || 0,
           total_remaining_ml: drink.total_remaining_ml || 0,
+          unit_volume_oz: drink.unit_volume_oz,
+          cost_per_unit: drink.cost_per_unit,
+          profit_margin: drink.profit_margin,
+          popularity_score: drink.popularity_score || 0,
+          tax_category_id: drink.tax_category_id,
+          image_url: drink.image_url,
+          description: drink.description,
+          is_active: drink.is_active,
+          created_at: drink.created_at,
+          updated_at: drink.updated_at,
         });
       }
     });
