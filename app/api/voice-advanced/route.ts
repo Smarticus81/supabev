@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import db from '@/db';
+import { neon } from '@neondatabase/serverless';
 import { 
   drinks, orders, customers, staff, venues, eventPackages, eventBookings, 
   transactions, inventory, pours, customerTabs, analyticsData, 
@@ -9,6 +10,9 @@ import { eq, desc, sql, and, or, gte, lte, sum, count, avg } from 'drizzle-orm';
 
 // Import the actual cart system from tools.js
 import { invoke } from '@/lib/tools';
+
+// Neon SQL client for raw queries
+const sqlClient = neon(process.env.DATABASE_URL!);
 
 // COMPREHENSIVE VENUE MANAGEMENT VOICE API TOOLS
 export async function POST(request: NextRequest) {
@@ -101,6 +105,14 @@ export async function POST(request: NextRequest) {
         return handleCancelOrder(parameters);
       case 'duplicate_order':
         return handleDuplicateOrder(parameters);
+
+      // 🍸 DRINK MENU MANAGEMENT TOOLS - NEW!
+      case 'create_drink':
+        return handleCreateDrink(parameters);
+      case 'remove_drink':
+        return handleRemoveDrink(parameters);
+      case 'update_drink_details':
+        return handleUpdateDrinkDetails(parameters);
 
       default:
         return NextResponse.json({ error: 'Unknown tool' }, { status: 400 });
@@ -817,19 +829,25 @@ async function handleListEventPackages(params: any) {
 }
 
 async function handleGetEventPackageDetails(params: any) {
-  const { package_id } = params;
-  
-  const packageDetails = await db.select().from(eventPackages)
-    .where(eq(eventPackages.id, package_id))
-    .limit(1);
-  
-  if (!packageDetails.length) {
-    return NextResponse.json({ error: 'Package not found' });
+  try {
+    const { package_id } = params;
+    
+    const packageDetails = await sqlClient`SELECT * FROM event_packages WHERE id = ${package_id} LIMIT 1`;
+    
+    if (!packageDetails.length) {
+      return NextResponse.json({ error: 'Package not found' });
+    }
+    
+    return NextResponse.json({
+      package: packageDetails[0]
+    });
+  } catch (error) {
+    console.error('Error getting event package details:', error);
+    return NextResponse.json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error occurred'
+    });
   }
-  
-  return NextResponse.json({
-    package: packageDetails[0]
-  });
 }
 
 async function handleCreateEventPackage(params: any) {
@@ -872,93 +890,88 @@ async function handleCreateEventPackage(params: any) {
 
 async function handleBookEvent(params: any) {
   try {
-    const { package_id, guest_count, event_date, customer_name, customer_email, customer_phone, event_name, start_time, special_requests } = params;
+    const { package: packageName, guest_count, event_date, customer_name, customer_email, customer_phone, event_name, start_time, special_requests } = params;
     
     // Validate required parameters
-    if (!package_id || !guest_count || !event_date || !customer_name) {
+    if (!packageName || !guest_count || !event_date || !customer_name) {
       return NextResponse.json({ 
         success: false,
-        error: 'Missing required parameters: package_id, guest_count, event_date, customer_name' 
+        error: 'Missing required parameters: package, guest_count, event_date, customer_name' 
       });
     }
     
-    // Find package by ID using raw SQL with proper parameter binding
-    const eventPackageResult = await db.execute({
-      sql: `SELECT * FROM event_packages WHERE id = $1 LIMIT 1`,
-      args: [package_id]
-    });
-    const eventPackage = eventPackageResult.rows;
+    // Find package by name using direct SQL
+    const eventPackageResults = await sqlClient`SELECT * FROM event_packages WHERE name = ${packageName} LIMIT 1`;
     
-    if (!eventPackage.length) {
+    if (!eventPackageResults || eventPackageResults.length === 0) {
       return NextResponse.json({ 
         success: false,
         error: 'Package not found' 
       });
     }
     
-    // Create/find customer
-    let customer;
+    // Create/find customer using direct SQL
+    let customer = null;
     if (customer_email) {
-      customer = await db.select().from(customers)
-        .where(eq(customers.email, customer_email))
-        .limit(1);
+      const existingCustomerResults = await sqlClient`SELECT * FROM customers WHERE email = ${customer_email} LIMIT 1`;
+      if (existingCustomerResults.length > 0) {
+        customer = existingCustomerResults[0];
+      }
     }
     
-    if ((!customer || customer.length === 0) && customer_name) {
+    if (!customer && customer_name) {
       const [firstName, ...lastNameParts] = customer_name.split(' ');
       const lastName = lastNameParts.join(' ');
       
-      customer = await db.insert(customers).values({
-        first_name: firstName,
-        last_name: lastName || '',
-        email: customer_email || null,
-        phone: customer_phone || null
-      }).returning();
+      const newCustomerResults = await sqlClient`
+        INSERT INTO customers (first_name, last_name, email, phone)
+        VALUES (${firstName}, ${lastName || ''}, ${customer_email || null}, ${customer_phone || null})
+        RETURNING *
+      `;
+      customer = newCustomerResults[0];
     }
     
-    // Create booking using raw SQL with proper parameter binding
-    const bookingResult = await db.execute({
-      sql: `INSERT INTO event_bookings (
+    // Create booking using direct SQL
+    const packageData = eventPackageResults[0] as any;
+    const bookingResults = await sqlClient`
+      INSERT INTO event_bookings (
         customer_id, package_id, event_name, event_date, start_time, 
         guest_count, total_price, status, special_requests
       ) VALUES (
-        $1, $2, $3, $4, $5, $6, $7, $8, $9
-      ) RETURNING *`,
-      args: [
-        customer[0]?.id || null, 
-        package_id, 
-        event_name || 'Event', 
-        event_date, 
-        start_time || '18:00', 
-        guest_count, 
-        eventPackage[0].base_price * guest_count, 
-        'pending', 
-        special_requests || ''
-      ]
-    });
+        ${customer?.id || null},
+        ${packageData.id},
+        ${event_name || 'Event'},
+        ${event_date},
+        ${start_time || '18:00'},
+        ${guest_count},
+        ${packageData.price * guest_count},
+        'pending',
+        ${special_requests || ''}
+      ) RETURNING *
+    `;
     
-    const booking = bookingResult.rows[0];
+    const bookingData = bookingResults[0] as any;
     
     return NextResponse.json({
       success: true,
       message: `Event booked successfully for ${customer_name}`,
       booking: {
-        id: booking.id,
-        guest_count: booking.guest_count,
-        event_date: booking.event_date,
-        status: booking.status,
-        total_price: booking.total_price, // Already in dollars
-        event_name: booking.event_name,
-        start_time: booking.start_time,
-        special_requests: booking.special_requests
+        id: bookingData.id,
+        guest_count: bookingData.guest_count,
+        event_date: bookingData.event_date,
+        status: bookingData.status,
+        total_price: bookingData.total_price, // Already in cents
+        event_name: bookingData.event_name,
+        start_time: bookingData.start_time,
+        special_requests: bookingData.special_requests
       },
       package: {
-        id: eventPackage[0].id,
-        name: eventPackage[0].name,
-        price: eventPackage[0].base_price
+        id: packageData.id,
+        name: packageData.name,
+        price: packageData.price
       }
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error booking event:', error);
     return NextResponse.json({
       success: false,
@@ -1009,57 +1022,74 @@ async function handleGetEventBookings(params: any) {
     console.error('Error getting event bookings:', error);
     return NextResponse.json({
       success: false,
-      error: error.message
+      error: error instanceof Error ? error.message : 'Unknown error occurred'
     });
   }
 }
 
 async function handleCalculateEventPricing(params: any) {
-  const { package: packageName, guest_count, add_ons = [] } = params;
-  
-  const eventPackage = await db.select().from(eventPackages)
-    .where(eq(eventPackages.name, packageName))
-    .limit(1);
-  
-  if (!eventPackage.length) {
-    return NextResponse.json({ error: 'Package not found' });
-  }
-  
-  const basePrice = eventPackage[0].price_per_person * guest_count;
-  const addOnsPrice = add_ons.reduce((sum: number, addon: any) => sum + (addon.price * 100), 0);
-  const totalPrice = basePrice + addOnsPrice;
-  
-  return NextResponse.json({
-    package: eventPackage[0],
-    guest_count,
-    base_price: basePrice / 100,
-    add_ons_price: addOnsPrice / 100,
-    total_price: totalPrice / 100,
-    pricing_breakdown: {
-      per_person: eventPackage[0].price_per_person / 100,
-      base_total: basePrice / 100,
-      add_ons: add_ons,
-      final_total: totalPrice / 100
+  try {
+    const { package: packageName, guest_count, add_ons = [] } = params;
+    
+    const eventPackageResults = await sqlClient`SELECT * FROM event_packages WHERE name = ${packageName} LIMIT 1`;
+    
+    if (!eventPackageResults.length) {
+      return NextResponse.json({ error: 'Package not found' });
     }
-  });
+    
+    const eventPackage = eventPackageResults[0] as any;
+    const basePrice = eventPackage.price * guest_count;
+    const addOnsPrice = add_ons.reduce((sum: number, addon: any) => sum + (addon.price * 100), 0);
+    const totalPrice = basePrice + addOnsPrice;
+    
+    return NextResponse.json({
+      package: eventPackage,
+      guest_count,
+      base_price: basePrice / 100,
+      add_ons_price: addOnsPrice / 100,
+      total_price: totalPrice / 100,
+      pricing_breakdown: {
+        per_person: eventPackage.price / 100,
+        base_total: basePrice / 100,
+        add_ons: add_ons,
+        final_total: totalPrice / 100
+      }
+    });
+  } catch (error) {
+    console.error('Error calculating event pricing:', error);
+    return NextResponse.json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error occurred'
+    });
+  }
 }
 
 async function handleUpdateEventStatus(params: any) {
-  const { booking_id, status } = params;
-  
-  const updated = await db.update(eventBookings)
-    .set({ status })
-    .where(eq(eventBookings.id, booking_id))
-    .returning();
-  
-  if (!updated.length) {
-    return NextResponse.json({ error: 'Booking not found' });
+  try {
+    const { booking_id, status } = params;
+    
+    const updated = await sqlClient`
+      UPDATE event_bookings 
+      SET status = ${status}
+      WHERE id = ${booking_id}
+      RETURNING *
+    `;
+    
+    if (!updated.length) {
+      return NextResponse.json({ error: 'Booking not found' });
+    }
+    
+    return NextResponse.json({
+      message: `Event booking status updated to ${status}`,
+      booking: updated[0]
+    });
+  } catch (error) {
+    console.error('Error updating event status:', error);
+    return NextResponse.json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error occurred'
+    });
   }
-  
-  return NextResponse.json({
-    message: `Event booking status updated to ${status}`,
-    booking: updated[0]
-  });
 }
 
 // 💰 FINANCIAL & PAYMENT TOOLS
@@ -1183,4 +1213,276 @@ async function handleDuplicateOrder(params: any) {
     message: `Order ${order_id} duplicated`,
     original_order: originalOrder[0]
   });
+}
+
+// 🍸 DRINK MENU MANAGEMENT HANDLERS - NEW!
+async function handleCreateDrink(params: any) {
+  const { 
+    name, 
+    category, 
+    subcategory, 
+    price, 
+    inventory = 0, 
+    unit_volume_oz, 
+    cost_per_unit, 
+    description,
+    image_url,
+    unit_type 
+  } = params;
+
+  // Validate required fields
+  if (!name || !category || !price) {
+    return NextResponse.json({ 
+      error: 'Missing required information. I need at least a name, category, and price to create a drink.',
+      missing_fields: [
+        !name && 'name',
+        !category && 'category', 
+        !price && 'price'
+      ].filter(Boolean),
+      text: 'I need more details to create that drink. Please provide the name, category, and price.'
+    }, { status: 400 });
+  }
+
+  try {
+    // Convert price to cents
+    const priceInCents = Math.round(price * 100);
+    const costInCents = cost_per_unit ? Math.round(cost_per_unit * 100) : null;
+
+    // Calculate profit margin if cost is provided
+    const profitMargin = costInCents ? ((priceInCents - costInCents) / priceInCents) * 100 : null;
+
+    // Determine unit type and serving details based on category
+    let defaultUnitType = unit_type || 'ounce';
+    let defaultServingSize = 8.0;
+    let defaultServingsPerContainer = 1;
+    let defaultVolume = 8.0;
+
+    const categoryLower = category.toLowerCase();
+    
+    if (categoryLower.includes('beer') || categoryLower.includes('lager') || categoryLower.includes('ale')) {
+      defaultUnitType = 'bottle';
+      defaultServingSize = 12.0;
+      defaultServingsPerContainer = 1;
+      defaultVolume = 12.0;
+    } else if (categoryLower.includes('wine') || categoryLower.includes('champagne') || categoryLower.includes('prosecco')) {
+      defaultUnitType = 'glass';
+      defaultServingSize = 5.0;
+      defaultServingsPerContainer = 5; // Assuming bottle = 5 glasses
+      defaultVolume = 5.0;
+    } else if (categoryLower.includes('spirit') || categoryLower.includes('whiskey') || categoryLower.includes('vodka') || 
+               categoryLower.includes('gin') || categoryLower.includes('rum') || categoryLower.includes('tequila') ||
+               categoryLower.includes('bourbon') || categoryLower.includes('scotch') || categoryLower.includes('liqueur')) {
+      defaultUnitType = 'shot';
+      defaultServingSize = 1.5;
+      defaultServingsPerContainer = 17; // Assuming 750ml bottle = ~17 shots
+      defaultVolume = 1.5;
+    } else if (categoryLower.includes('cocktail') || categoryLower.includes('mixed') || categoryLower.includes('signature')) {
+      defaultUnitType = 'ounce';
+      defaultServingSize = 8.0;
+      defaultServingsPerContainer = 1;
+      defaultVolume = 8.0;
+    }
+
+    // Use provided values or defaults
+    const finalUnitType = unit_type || defaultUnitType;
+    const finalVolume = unit_volume_oz || defaultVolume;
+
+    // Insert new drink with unit tracking
+    const [newDrink] = await db.insert(drinks).values({
+      name: name.trim(),
+      category: category.trim(),
+      subcategory: subcategory?.trim(),
+      price: priceInCents,
+      inventory: inventory || 0,
+      unit_type: finalUnitType,
+      unit_volume_oz: finalVolume,
+      serving_size_oz: defaultServingSize,
+      servings_per_container: defaultServingsPerContainer,
+      cost_per_unit: costInCents,
+      profit_margin: profitMargin,
+      description: description?.trim(),
+      image_url: image_url?.trim(),
+      is_active: true,
+      updated_at: sql`NOW()`
+    }).returning();
+
+    console.log('✅ Voice-created new drink:', newDrink);
+
+    // Format unit type for response
+    const unitDisplay = finalUnitType === 'bottle' ? 'bottles' :
+                       finalUnitType === 'glass' ? 'glasses' :
+                       finalUnitType === 'shot' ? 'shots' :
+                       finalUnitType === 'ounce' ? 'ounces' : finalUnitType;
+
+    return NextResponse.json({
+      success: true,
+      message: `Perfect! I've successfully created "${name}" and added it to our ${category} menu at $${price.toFixed(2)}. It's tracked by ${unitDisplay}.`,
+      text: `Perfect! I've successfully created "${name}" and added it to our ${category} menu at $${price.toFixed(2)}. It's tracked by ${unitDisplay}.`,
+      drink: {
+        id: newDrink.id.toString(),
+        name: newDrink.name,
+        category: newDrink.category,
+        subcategory: newDrink.subcategory,
+        price: newDrink.price / 100,
+        inventory: newDrink.inventory,
+        unit_type: newDrink.unit_type,
+        unit_volume_oz: newDrink.unit_volume_oz,
+        serving_size_oz: newDrink.serving_size_oz,
+        servings_per_container: newDrink.servings_per_container,
+        cost_per_unit: newDrink.cost_per_unit ? newDrink.cost_per_unit / 100 : null,
+        profit_margin: newDrink.profit_margin,
+        description: newDrink.description,
+        image_url: newDrink.image_url,
+        created_at: newDrink.created_at
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Failed to create drink via voice:', error);
+    return NextResponse.json({ 
+      error: 'I encountered an issue creating that drink. Please try again.',
+      text: 'I encountered an issue creating that drink. Please try again.',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    }, { status: 500 });
+  }
+}
+
+async function handleRemoveDrink(params: any) {
+  const { drink_name, drink_id } = params;
+
+  if (!drink_id && !drink_name) {
+    return NextResponse.json({ 
+      error: 'I need either a drink name or ID to remove it from the menu.',
+      text: 'I need either a drink name or ID to remove it from the menu.'
+    }, { status: 400 });
+  }
+
+  try {
+    // Find and soft-delete the drink(s)
+    let deletedDrinks;
+    if (drink_id) {
+      deletedDrinks = await db
+        .update(drinks)
+        .set({ 
+          is_active: false,
+          updated_at: sql`NOW()`
+        })
+        .where(eq(drinks.id, parseInt(drink_id)))
+        .returning();
+    } else if (drink_name) {
+      deletedDrinks = await db
+        .update(drinks)
+        .set({ 
+          is_active: false,
+          updated_at: sql`NOW()`
+        })
+        .where(eq(drinks.name, drink_name.trim()))
+        .returning();
+    }
+
+    if (!deletedDrinks || deletedDrinks.length === 0) {
+      return NextResponse.json({ 
+        error: `I couldn't find "${drink_name || drink_id}" in our menu. Could you double-check the name?`,
+        text: `I couldn't find "${drink_name || drink_id}" in our menu. Could you double-check the name?`,
+        suggestion: 'Try asking me to search for drinks if you\'re not sure of the exact name.'
+      }, { status: 404 });
+    }
+
+    console.log('✅ Voice-removed drink(s):', deletedDrinks);
+
+    const drinkNames = deletedDrinks.map(d => d.name).join(', ');
+    return NextResponse.json({
+      success: true,
+      message: `Done! I've successfully removed "${drinkNames}" from our menu.`,
+      text: `Done! I've successfully removed "${drinkNames}" from our menu.`,
+      deletedDrinks: deletedDrinks.map(drink => ({
+        id: drink.id,
+        name: drink.name,
+        category: drink.category
+      }))
+    });
+
+  } catch (error) {
+    console.error('❌ Failed to remove drink via voice:', error);
+    return NextResponse.json({ 
+      error: 'I encountered an issue removing that drink. Please try again.',
+      text: 'I encountered an issue removing that drink. Please try again.',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    }, { status: 500 });
+  }
+}
+
+async function handleUpdateDrinkDetails(params: any) {
+  const { drink_name, updates } = params;
+
+  if (!drink_name || !updates) {
+    return NextResponse.json({ 
+      error: 'I need both a drink name and the details to update.',
+      text: 'I need both a drink name and the details to update.'
+    }, { status: 400 });
+  }
+
+  try {
+    // Prepare update object
+    const updateData: any = {
+      updated_at: sql`NOW()`
+    };
+
+    if (updates.price !== undefined) {
+      updateData.price = Math.round(updates.price * 100);
+    }
+    if (updates.description !== undefined) {
+      updateData.description = updates.description.trim();
+    }
+    if (updates.category !== undefined) {
+      updateData.category = updates.category.trim();
+    }
+    if (updates.subcategory !== undefined) {
+      updateData.subcategory = updates.subcategory.trim();
+    }
+
+    // Update the drink
+    const [updatedDrink] = await db
+      .update(drinks)
+      .set(updateData)
+      .where(eq(drinks.name, drink_name.trim()))
+      .returning();
+
+    if (!updatedDrink) {
+      return NextResponse.json({ 
+        error: `I couldn't find "${drink_name}" in our menu to update. Could you check the name?`,
+        text: `I couldn't find "${drink_name}" in our menu to update. Could you check the name?`
+      }, { status: 404 });
+    }
+
+    console.log('✅ Voice-updated drink:', updatedDrink);
+
+    const updatesList = Object.keys(updates).map(key => {
+      if (key === 'price') return `price to $${updates.price.toFixed(2)}`;
+      return `${key} to "${updates[key]}"`;
+    }).join(', ');
+
+    return NextResponse.json({
+      success: true,
+      message: `Perfect! I've updated "${drink_name}" with the new ${updatesList}.`,
+      text: `Perfect! I've updated "${drink_name}" with the new ${updatesList}.`,
+      drink: {
+        id: updatedDrink.id.toString(),
+        name: updatedDrink.name,
+        category: updatedDrink.category,
+        subcategory: updatedDrink.subcategory,
+        price: updatedDrink.price / 100,
+        description: updatedDrink.description,
+        updated_at: updatedDrink.updated_at
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Failed to update drink via voice:', error);
+    return NextResponse.json({ 
+      error: 'I encountered an issue updating that drink. Please try again.',
+      text: 'I encountered an issue updating that drink. Please try again.',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    }, { status: 500 });
+  }
 } 

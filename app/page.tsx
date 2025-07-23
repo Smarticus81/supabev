@@ -23,6 +23,7 @@ import { useForm } from 'react-hook-form'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useToast } from '@/hooks/use-toast'
 import { SettingsView } from "@/components/settings-view"
+import Image from "next/image"
 
 interface OrderItem {
   id: string;
@@ -97,52 +98,36 @@ export default function Home() {
     console.log('Cart updated:', orders.length, 'items');
   }, [orders])
 
-  // Sync with voice cart every 2 seconds
+  // Voice cart polling for syncing voice-added items with UI
   useEffect(() => {
-    const syncWithVoiceCart = async () => {
+    const pollVoiceCart = async () => {
       try {
         const response = await fetch('/api/voice-cart');
-        if (response.ok) {
-          const voiceCartData = await response.json();
-          if (voiceCartData.success) {
-            // Always sync with voice cart state (including when empty)
-            if (voiceCartData.items.length === 0) {
-              // Voice cart is empty - clear the main cart
-              setOrders([]);
-            } else {
-              // Merge voice cart items with current cart
-              setOrders(prevOrders => {
-                const mergedCart = [...prevOrders];
-                
-                voiceCartData.items.forEach((voiceItem: any) => {
-                  const existingIndex = mergedCart.findIndex(item => String(item.id) === String(voiceItem.id));
-                  if (existingIndex >= 0) {
-                    // Update existing item with voice cart quantity
-                    mergedCart[existingIndex] = voiceItem;
-                  } else {
-                    // Add new item from voice cart
-                    mergedCart.push(voiceItem);
-                  }
-                });
-                
-                return mergedCart;
-              });
-            }
+        const data = await response.json();
+        
+        if (data.success) {
+          // Only update if the cart has changed to prevent unnecessary re-renders
+          const currentIds = orders.map(item => item.id).sort();
+          const voiceIds = data.items.map((item: any) => item.id).sort();
+          
+          if (JSON.stringify(currentIds) !== JSON.stringify(voiceIds)) {
+            console.log('Voice cart sync: updating UI cart with', data.items.length, 'items');
+            setOrders(data.items);
           }
         }
       } catch (error) {
-        console.error('Error syncing with voice cart:', error);
+        console.error('Error polling voice cart:', error);
       }
     };
 
-    // Initial sync
-    syncWithVoiceCart();
+    // Poll every 2 seconds instead of every 500ms for better performance
+    const interval = setInterval(pollVoiceCart, 2000);
     
-    // Set up periodic sync
-    const interval = setInterval(syncWithVoiceCart, 2000);
+    // Also poll immediately on mount
+    pollVoiceCart();
     
     return () => clearInterval(interval);
-  }, [])
+  }, [orders]) // Depend on orders to avoid unnecessary polling when cart hasn't changed
 
   // removed Vapi overlay logic
 
@@ -412,8 +397,26 @@ export default function Home() {
       {/* Top Navigation */}
       <div className="bg-white border-b border-gray-200 px-3 sm:px-6 py-3 sm:py-4 flex-shrink-0">
         <div className="flex items-center justify-between">
+          {/* Logo and Brand */}
+          <div className="flex items-center space-x-4">
+            <div className="flex items-center space-x-3">
+              <Image
+                src="/logo.svg"
+                alt="BevPro Logo"
+                width={140}
+                height={24}
+                className="h-6 w-auto"
+                priority
+              />
+              <div className="hidden sm:block">
+                <h1 className="text-lg font-bold text-[#17223B]"></h1>
+                <p className="text-xs text-gray-500">Knotting Hill Place</p>
+              </div>
+            </div>
+          </div>
+
           {/* Package Tabs - Hidden on mobile, shown on tablet+ */}
-          <div className="hidden md:block flex-1">
+          <div className="hidden lg:block flex-1 mx-8">
             <Tabs value={selectedPackage} onValueChange={setSelectedPackage}>
               <TabsList className="bg-gray-100 p-1">
                 {packages.map((pkg) => (
@@ -497,6 +500,22 @@ export default function Home() {
 
           </div>
         </div>
+      </div>
+
+      {/* Mobile Package Selector */}
+      <div className="lg:hidden bg-white border-b border-gray-200 px-3 py-2">
+        <Select value={selectedPackage} onValueChange={setSelectedPackage}>
+          <SelectTrigger className="w-full">
+            <SelectValue placeholder="Select Package" />
+          </SelectTrigger>
+          <SelectContent>
+            {packages.map((pkg) => (
+              <SelectItem key={pkg} value={pkg}>
+                {pkg}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       {/* Main Content */}

@@ -4,7 +4,6 @@ const { createClient } = require('@deepgram/sdk');
 const { ElevenLabsClient } = require('@elevenlabs/elevenlabs-js');
 const { HumeClient } = require('hume');
 const { invokeMcpTool } = require('./mcp-client');
-const { getDb } = require('../lib/db');
 const AudioGenerator = require('../lib/audio-generator');
 const fs = require('fs');
 const path = require('path');
@@ -51,15 +50,22 @@ function getClientState(clientId) {
     return clientStates.get(clientId);
 }
 
-// Get available drinks from database
-function getAvailableDrinks() {
+// Get available drinks from database via API
+async function getAvailableDrinks() {
   try {
-    const db = getDb();
-    const drinks = db.prepare('SELECT name FROM drinks').all();
+    // Use Node.js built-in fetch (Node 18+) or fallback
+    const fetchFn = global.fetch || require('node-fetch');
+    const response = await fetchFn('http://localhost:3000/api/drinks');
+    const drinks = await response.json();
     return drinks.map(d => d.name);
   } catch (error) {
-    console.error('Error getting drinks from database:', error);
-    return [];
+    console.error('Error getting drinks from API:', error);
+    // Fallback to static list if API is not available
+    return [
+      'Bud Light', 'Coors Light', 'Miller Lite', 'Heineken', 'Corona Extra',
+      'Stella Artois', 'Dos XX', 'White Claw', "Truly's Seltzer", 'Michelob Ultra',
+      'Shiner Bock', "Tito's Vodka", 'G.Goose Vodka', 'Captain Morgan'
+    ];
   }
 }
 

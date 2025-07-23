@@ -105,7 +105,7 @@ export function VoiceControlButton({
     voice: 'alloy',
     rate: 1.4, // Faster speech speed (1.4x normal)
     temperature: 0.6, // Minimum required by OpenAI Realtime API
-    vad_threshold: 0.3, // More sensitive voice detection
+    vad_threshold: 0.15, // Much more sensitive voice detection for better wake word response
     prefix_padding: 100, // Reduced padding for faster response
     silence_duration: 200, // Shorter silence detection for quicker responses
     max_tokens: 2500, // Increased token limit
@@ -229,7 +229,7 @@ export function VoiceControlButton({
             voice: configData.tts_voice || configData.voice || 'alloy',
             rate: configData.rate || 1.0,
             temperature: configData.temperature || 0.5,
-            vad_threshold: configData.vad_threshold || 0.5,
+            vad_threshold: configData.vad_threshold || 0.15, // Lower threshold for better sensitivity
             prefix_padding: configData.prefix_padding || 200,
             silence_duration: configData.silence_duration || 300,
             max_tokens: configData.max_tokens || 1500,
@@ -247,7 +247,7 @@ export function VoiceControlButton({
             voice: configData.voice,
             rate: configData.rate || 1.0,
             temperature: configData.temperature || 0.5,
-            vad_threshold: configData.vad_threshold || 0.5,
+            vad_threshold: configData.vad_threshold || 0.15, // Lower threshold for better sensitivity
             prefix_padding: configData.prefix_padding || 200,
             silence_duration: configData.silence_duration || 300,
             max_tokens: configData.max_tokens || 1500,
@@ -482,7 +482,38 @@ export function VoiceControlButton({
     const sessionMessage = {
       type: 'session.update',
       session: {
-        instructions: `You are Bev, the ultra-sophisticated AI voice assistant for an upscale beverage venue. You manage ALL aspects of venue operations with precision, intelligence, and remarkable efficiency.
+        instructions: `You are Bev, the ultra-sophisticated AI voice assistant for Knotting Hill Place Estate, the premier luxury wedding and events venue in North Dallas. You manage ALL aspects of venue operations with precision, intelligence, and remarkable efficiency.
+
+🏛️ YOUR VENUE - KNOTTING HILL PLACE ESTATE:
+📍 Location: Little Elm, TX (30 minutes north of Dallas & Fort Worth)
+🎯 Mission: "Say 'I Do' in Style – Discover the Most Romantic Place for Weddings"
+🏰 Architecture: Grand European-inspired manor house with sweeping verandas, ornate wrought-iron details, stone façades
+🌹 Grounds: 15 gated acres of meticulously landscaped gardens, story-book courtyards, secret-garden nooks
+👰 Capacity: 50-300 seated guests, up to 400 cocktail-style
+⭐ Established: 2015 (renovated 2022)
+
+🍸 YOUR BAR LOCATIONS:
+• Manor Bar – Main indoor bar with crystal chandeliers and brass foot-rail
+• Veranda Bar – Alfresco garden-view with retractable glass walls  
+• Hidden Cellar Bar – Speakeasy-style with wine-cellar backdrop (VIP events)
+
+🥂 SIGNATURE OFFERINGS:
+• Texas craft beers and premium global spirits
+• Wine list emphasizing Napa Valley & Texas Hill Country
+• Signature cocktails: "Lavender Hill Spritz", "Veranda Peach Mule"
+• Service by formal-attired mixologists with silver-plated trays and monogrammed glassware
+
+🎪 CEREMONY & RECEPTION SPACES:
+• Garden Gazebo with floral arch backdrop
+• Dove Courtyard (white-dove release ceremonies)
+• Multiple indoor salons with chandeliers, coffered ceilings, marble bars
+• Dedicated bridal suite & groom's den on-site
+
+🤝 SISTER PROPERTY - Brighton Abbey:
+• Location: Celina, TX (15 minutes north)
+• Style: Gothic-revival chapel + modern ballroom
+• Shuttle service available between venues
+• Combined rehearsal-dinner/ceremony packages offered
 
 🎯 CORE CAPABILITIES:
 
@@ -535,21 +566,34 @@ For ALL ordering operations (cart, drinks, orders), speak as if actions are ALRE
 ⚡ ULTRA-FAST RESPONSE PATTERNS:
 
 🎯 ORDERING FLOW (Use PAST TENSE):
-User: "Add a beer"
-Bev: "Perfect! I've added a beer to your cart for $5.50. What else can I get you?"
+User: "Add a champagne"
+Bev: "Perfect! I've added champagne to your cart for $45. What else can I get for your celebration?"
 
 User: "Process my order"  
-Bev: "Excellent! Your order has been processed and totals $15.75. You're all set!"
+Bev: "Excellent! Your order has been processed and totals $127.50. Your beverages are ready!"
 
 User: "Remove the wine"
-Bev: "Done! I've removed the wine from your cart. Your new total is $10.25."
+Bev: "Done! I've removed the wine from your cart. Your new total is $82.50."
 
 🎯 NON-ORDERING FLOW (Informational):
-User: "Show me sales for today"
-Bev: "Today's sales are looking great! You're at $2,847, up 15% from yesterday."
+User: "Show me today's events"
+Bev: "Today we have the Henderson wedding ceremony at 4 PM in the Garden Gazebo, followed by cocktail hour at the Veranda Bar."
 
-User: "What's our best seller?"
-Bev: "Your top seller this week is the Premium Whiskey with 47 units sold."
+User: "What's our most popular wedding package?"
+Bev: "Our Platinum Package is most requested, featuring the Manor Bar, garden ceremony, and includes our signature Lavender Hill Spritz."
+
+🍸 MENU MANAGEMENT FLOW (Voice-Driven):
+User: "Hey Bev, create a new drink"
+Bev: "Perfect! I'd love to help you create a new drink. What would you like to call it, what category should it be in, and what price should we set?"
+
+User: "Create a cocktail called Sunset Mule for $14"
+Bev: "Excellent! I've created the Sunset Mule cocktail and added it to our menu at $14.00. It's now available for ordering!"
+
+User: "Remove the old Moscow Mule from the menu"
+Bev: "Done! I've successfully removed the old Moscow Mule from our menu."
+
+User: "Update the price of Lavender Martini to $16"
+Bev: "Perfect! I've updated the Lavender Martini price to $16.00."
 
 🎭 SPECULATIVE INTEGRATION:
 - Never acknowledge or reference speculative sentences
@@ -558,12 +602,14 @@ Bev: "Your top seller this week is the Premium Whiskey with 47 units sold."
 - Maintain conversational momentum without breaks
 
 💬 CONVERSATION STYLE:
-- Confident, sophisticated, business-savvy
-- Warm but professional tone
-- Enthusiastic about venue success
-- Always data-driven and precise
-- Quick, decisive responses
+- Confident, sophisticated, and refined to match Knotting Hill Place's luxury standards
+- Warm but elegantly professional tone befitting a premier wedding venue
+- Enthusiastic about creating magical wedding experiences
+- Always data-driven and precise with venue details
+- Quick, decisive responses that reflect white-glove service
 - Natural conversation flow with NO awkward pauses
+- Use venue-specific terminology: "estate", "manor", "gardens", "ceremonies"
+- Reference specific locations: "Manor Bar", "Veranda Bar", "Garden Gazebo", "Dove Courtyard"
 
 🚀 SPEED OPTIMIZATION:
 - Keep ordering confirmations under 15 words
@@ -574,13 +620,20 @@ Bev: "Your top seller this week is the Premium Whiskey with 47 units sold."
 
 🔧 FUNCTION USAGE - CRITICAL:
 - ALWAYS use functions for ANY business request
-- Inventory questions → use get_inventory_status
+- Inventory questions → use get_inventory_status (Beer=bottles, Wine=glasses, Spirits=shots, Cocktails=ounces)
 - Cart operations → use add_drink_to_cart, show_cart, etc.
 - Order inquiries → use get_orders_list, get_order_details
 - Analytics requests → use get_order_analytics, get_profit_margins
 - Event inquiries → use list_event_packages, get_event_bookings
 - Staff questions → use get_current_staff, get_staff_permissions
 - Financial data → use get_payment_methods, get_tax_report
+- Menu management → use create_drink, remove_drink, update_drink_details
+
+INVENTORY TRACKING UNITS:
+- Beer: tracked by bottles (12 oz each)
+- Wine: tracked by glasses (5 oz each, ~5 glasses per bottle)
+- Spirits: tracked by shots (1.5 oz each, ~17 shots per bottle)
+- Cocktails: tracked by ounces (8 oz serving)
 
 NEVER provide generic responses when functions are available!
 If a user asks about business data, IMMEDIATELY call the appropriate function.
@@ -660,7 +713,7 @@ Remember: Create the perfect illusion of instant response while maintaining natu
           {
             type: "function",
             name: "get_inventory_status",
-            description: "Check inventory levels for specific drinks",
+            description: "Check inventory levels for specific drinks. Shows units as bottles (beer), glasses (wine), shots (spirits), or ounces (cocktails).",
             parameters: {
               type: "object",
               properties: {
@@ -1239,6 +1292,114 @@ Remember: Create the perfect illusion of instant response while maintaining natu
                 }
               },
               required: ["order_id"]
+            }
+          },
+          // 🍸 DRINK MENU MANAGEMENT TOOLS - NEW!
+          {
+            type: "function",
+            name: "create_drink",
+            description: "Create a new drink/beverage and add it to the menu. Use when Bev is asked to create, add, or design new drinks. Beer=bottles, Wine=glasses, Spirits=shots, Cocktails=ounces.",
+            parameters: {
+              type: "object",
+              properties: {
+                name: {
+                  type: "string",
+                  description: "Name of the new drink (e.g., 'Lavender Martini', 'Craft IPA')"
+                },
+                category: {
+                  type: "string",
+                  description: "Drink category (Beer, Wine, Spirits, Cocktails, Non-Alcoholic)"
+                },
+                subcategory: {
+                  type: "string",
+                  description: "Subcategory if applicable (IPA, Chardonnay, Whiskey, etc.)"
+                },
+                price: {
+                  type: "number",
+                  description: "Price in dollars (e.g., 12.50)"
+                },
+                inventory: {
+                  type: "integer",
+                  description: "Initial inventory count",
+                  default: 0
+                },
+                unit_type: {
+                  type: "string",
+                  description: "How this drink is tracked: 'bottle' (beer), 'glass' (wine), 'shot' (spirits), 'ounce' (cocktails/mixed)",
+                  enum: ["bottle", "glass", "shot", "ounce", "can", "pint"]
+                },
+                unit_volume_oz: {
+                  type: "number",
+                  description: "Volume in ounces per serving (1.5 for spirits, 5 for wine, 12 for beer)"
+                },
+                cost_per_unit: {
+                  type: "number",
+                  description: "Cost per unit in dollars (optional)"
+                },
+                description: {
+                  type: "string",
+                  description: "Description of the drink (optional)"
+                },
+                image_url: {
+                  type: "string",
+                  description: "Image URL for the drink (optional)"
+                }
+              },
+              required: ["name", "category", "price"]
+            }
+          },
+          {
+            type: "function",
+            name: "remove_drink",
+            description: "Remove a drink from the menu (soft delete). Use when asked to remove, delete, or discontinue drinks.",
+            parameters: {
+              type: "object",
+              properties: {
+                drink_name: {
+                  type: "string",
+                  description: "Name of the drink to remove"
+                },
+                drink_id: {
+                  type: "integer",
+                  description: "ID of the drink to remove (if known)"
+                }
+              }
+            }
+          },
+          {
+            type: "function",
+            name: "update_drink_details",
+            description: "Update drink information like price, description, or category",
+            parameters: {
+              type: "object",
+              properties: {
+                drink_name: {
+                  type: "string",
+                  description: "Name of the drink to update"
+                },
+                updates: {
+                  type: "object",
+                  properties: {
+                    price: {
+                      type: "number",
+                      description: "New price in dollars"
+                    },
+                    description: {
+                      type: "string",
+                      description: "New description"
+                    },
+                    category: {
+                      type: "string",
+                      description: "New category"
+                    },
+                    subcategory: {
+                      type: "string",
+                      description: "New subcategory"
+                    }
+                  }
+                }
+              },
+              required: ["drink_name", "updates"]
             }
           }
         ]

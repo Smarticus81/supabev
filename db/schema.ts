@@ -22,7 +22,10 @@ export const drinks = pgTable("drinks", {
   subcategory: text("subcategory"),
   price: integer("price").notNull(), // Price in cents
   inventory: integer("inventory").notNull(), // Inventory count
-  unit_volume_oz: real("unit_volume_oz"), // Volume of standard unit
+  unit_type: text("unit_type").notNull().default("ounce"), // "bottle", "glass", "ounce", "shot", "can", "pint"
+  unit_volume_oz: real("unit_volume_oz"), // Volume of standard unit in ounces
+  serving_size_oz: real("serving_size_oz"), // Standard serving size for this item
+  servings_per_container: integer("servings_per_container"), // For bottles/cans - how many servings per container
   cost_per_unit: integer("cost_per_unit"), // Cost in cents
   profit_margin: real("profit_margin"), // Calculated profit margin
   popularity_score: integer("popularity_score").default(0),

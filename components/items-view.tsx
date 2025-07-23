@@ -159,23 +159,82 @@ export default function ItemsView({ onAddToOrder, searchQuery, onSearchChange, o
     }
   }
 
-  const getInventoryStatus = (inventoryOz: number, unitVolumeOz: number) => {
-    const units = Math.floor(inventoryOz / unitVolumeOz)
-    if (units <= 5) return { status: "critical", color: "bg-red-500", text: "text-red-700", progress: "bg-red-500" }
-    if (units <= 20) return { status: "low", color: "bg-yellow-500", text: "text-yellow-700", progress: "bg-yellow-500" }
-    return { status: "good", color: "bg-green-500", text: "text-green-700", progress: "bg-green-500" }
-  }
-
-  const getProgressValue = (inventoryOz: number, unitVolumeOz: number) => {
-    const units = Math.floor(inventoryOz / unitVolumeOz)
-    return Math.min((units / 100) * 100, 100) // Assume 100 units as full, cap at 100%
-  }
-
   const formatPrice = (price: number) => {
     if (typeof price !== 'number' || isNaN(price)) {
       return 'N/A';
     }
     return `$${price.toFixed(2)}`;
+  };
+
+  const formatInventoryDisplay = (drink: any) => {
+    const inventory = drink.inventory || 0;
+    const unitType = drink.unit_type || 'ounce';
+    
+    // Map unit types to display labels
+    const unitLabels = {
+      'bottle': 'bottles',
+      'glass': 'glasses', 
+      'shot': 'shots',
+      'ounce': 'oz',
+      'can': 'cans',
+      'pint': 'pints'
+    };
+
+    const unitLabel = unitLabels[unitType as keyof typeof unitLabels] || unitType;
+    
+    // For bottles, glasses, shots - show whole numbers
+    if (['bottle', 'glass', 'shot', 'can', 'pint'].includes(unitType)) {
+      return `${inventory} ${unitLabel}`;
+    }
+    
+    // For ounces - show with decimal
+    return `${inventory.toFixed(1)} ${unitLabel}`;
+  };
+
+  const getInventoryStatus = (drink: any) => {
+    const inventory = drink.inventory || 0;
+    const unitType = drink.unit_type || 'ounce';
+    
+    // Different thresholds based on unit type
+    let criticalThreshold = 5;
+    let lowThreshold = 20;
+    
+    if (unitType === 'bottle' || unitType === 'can') {
+      criticalThreshold = 3;
+      lowThreshold = 10;
+    } else if (unitType === 'glass') {
+      criticalThreshold = 10;
+      lowThreshold = 30;
+    } else if (unitType === 'shot') {
+      criticalThreshold = 10;
+      lowThreshold = 25;
+    }
+    
+    if (inventory <= criticalThreshold) {
+      return { status: "critical", color: "bg-red-500", text: "text-red-700", progress: "bg-red-500" };
+    }
+    if (inventory <= lowThreshold) {
+      return { status: "low", color: "bg-yellow-500", text: "text-yellow-700", progress: "bg-yellow-500" };
+    }
+    return { status: "good", color: "bg-green-500", text: "text-green-700", progress: "bg-green-500" };
+  };
+
+  const getProgressValue = (drink: any) => {
+    const inventory = drink.inventory || 0;
+    const unitType = drink.unit_type || 'ounce';
+    
+    // Different max values for progress calculation based on unit type
+    let maxValue = 100;
+    
+    if (unitType === 'bottle' || unitType === 'can') {
+      maxValue = 50; // Assume 50 bottles as full stock
+    } else if (unitType === 'glass') {
+      maxValue = 100; // Wine glasses
+    } else if (unitType === 'shot') {
+      maxValue = 100; // Shots
+    }
+    
+    return Math.min((inventory / maxValue) * 100, 100);
   };
 
   return (
@@ -319,6 +378,7 @@ export default function ItemsView({ onAddToOrder, searchQuery, onSearchChange, o
                     Category {sortBy === "category" && (sortDirection === "asc" ? "↑" : "↓")}
                   </TableHead>
                   <TableHead>Subcategory</TableHead>
+                  <TableHead>Unit Type</TableHead>
                   <TableHead className="cursor-pointer text-right" onClick={() => handleSort("price")}>
                     Price {sortBy === "price" && (sortDirection === "asc" ? "↑" : "↓")}
                   </TableHead>
@@ -335,11 +395,8 @@ export default function ItemsView({ onAddToOrder, searchQuery, onSearchChange, o
               </TableHeader>
               <TableBody>
                 {filteredDrinks.map((drink) => {
-                  const inventoryOz = drink.inventory_oz || 0
-                  const unitVolumeOz = drink.unit_volume_oz || 12
-                  const units = Math.floor(inventoryOz / unitVolumeOz)
-                  const status = getInventoryStatus(inventoryOz, unitVolumeOz)
-                  const progressValue = getProgressValue(inventoryOz, unitVolumeOz)
+                  const status = getInventoryStatus(drink);
+                  const progressValue = getProgressValue(drink);
 
                   return (
                     <TableRow key={drink.id || drink.name}>
@@ -349,6 +406,20 @@ export default function ItemsView({ onAddToOrder, searchQuery, onSearchChange, o
                       </TableCell>
                       <TableCell>
                         <Badge variant="outline">{drink.subcategory || 'N/A'}</Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Badge 
+                          variant="secondary" 
+                          className={
+                            drink.unit_type === 'bottle' ? 'bg-blue-100 text-blue-800' :
+                            drink.unit_type === 'glass' ? 'bg-purple-100 text-purple-800' :
+                            drink.unit_type === 'shot' ? 'bg-orange-100 text-orange-800' :
+                            drink.unit_type === 'ounce' ? 'bg-green-100 text-green-800' :
+                            'bg-gray-100 text-gray-800'
+                          }
+                        >
+                          {drink.unit_type || 'ounce'}
+                        </Badge>
                       </TableCell>
                       <TableCell className="text-right">{formatPrice(drink.price)}</TableCell>
                       <TableCell className="text-right">
@@ -370,7 +441,7 @@ export default function ItemsView({ onAddToOrder, searchQuery, onSearchChange, o
                         <div className="space-y-1">
                           <div className="flex items-center justify-between">
                             <span className={`text-sm font-medium ${status.text}`}>
-                              {units} units ({inventoryOz.toFixed(1)} oz)
+                              {formatInventoryDisplay(drink)}
                             </span>
                             <Badge className={status.color}>{status.status}</Badge>
                           </div>

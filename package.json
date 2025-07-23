@@ -16,7 +16,14 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx db/migrate.ts",
     "db:studio": "drizzle-kit studio",
-    "db:seed": "tsx db/seed.ts"
+    "db:seed": "tsx db/seed.ts",
+    "learning:export": "node scripts/learning-cli.js export",
+    "learning:insights": "node scripts/learning-cli.js insights",
+    "learning:stats": "node scripts/learning-cli.js stats",
+    "learning:clean": "node scripts/learning-cli.js clean",
+    "learning:validate": "node scripts/learning-cli.js validate",
+    "learning:noise": "node scripts/learning-cli.js noise",
+    "learning:venue": "node scripts/learning-cli.js venue"
   },
   "dependencies": {
     "@deepgram/sdk": "^4.9.1",
@@ -53,7 +60,6 @@
     "@ricky0123/vad-node": "^0.0.3",
     "@vapi-ai/web": "^2.3.8",
     "autoprefixer": "^10.4.20",
-    "better-sqlite3": "^12.2.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "1.0.4",
@@ -87,7 +93,8 @@
     "tsx": "^4.20.3",
     "vaul": "^0.9.6",
     "ws": "^8.17.1",
-    "zod": "^3.24.1"
+    "zod": "^3.24.1",
+    "commander": "^12.0.0"
   },
   "devDependencies": {
     "@types/node": "^22",

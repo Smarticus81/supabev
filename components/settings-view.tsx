@@ -11,6 +11,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -53,6 +54,30 @@ export function SettingsView() {
   // Personality Settings
   const [personalityMode, setPersonalityMode] = useState("professional");
   const [verbosity, setVerbosity] = useState("balanced");
+  
+  // Business Settings
+  const [venueName, setVenueName] = useState("Knotting Hill Place Estate");
+  const [venueLocation, setVenueLocation] = useState("Little Elm, TX");
+  const [defaultTaxRate, setDefaultTaxRate] = useState(8.25);
+  const [currency, setCurrency] = useState("USD");
+  const [timeZone, setTimeZone] = useState("America/Chicago");
+  
+  // Integration Settings
+  const [enableLearning, setEnableLearning] = useState(true);
+  const [enableAnalytics, setEnableAnalytics] = useState(true);
+  const [enableVoiceOrdering, setEnableVoiceOrdering] = useState(true);
+  const [enableInventoryManagement, setEnableInventoryManagement] = useState(true);
+  const [enableEventBooking, setEnableEventBooking] = useState(true);
+  
+  // Security & Access Settings
+  const [requireStaffPin, setRequireStaffPin] = useState(false);
+  const [enableAuditLog, setEnableAuditLog] = useState(true);
+  const [sessionTimeout, setSessionTimeout] = useState(30);
+  
+  // Notification Settings
+  const [lowStockThreshold, setLowStockThreshold] = useState(5);
+  const [enableEmailNotifications, setEnableEmailNotifications] = useState(false);
+  const [notificationEmail, setNotificationEmail] = useState("");
   
   const { toast } = useToast();
 
@@ -115,6 +140,30 @@ export function SettingsView() {
         if (data.echo_cancellation !== undefined) setEchoCancellation(data.echo_cancellation);
         if (data.personality_mode) setPersonalityMode(data.personality_mode);
         if (data.verbosity) setVerbosity(data.verbosity);
+        
+        // Load business settings
+        if (data.venue_name) setVenueName(data.venue_name);
+        if (data.venue_location) setVenueLocation(data.venue_location);
+        if (data.default_tax_rate !== undefined) setDefaultTaxRate(data.default_tax_rate);
+        if (data.currency) setCurrency(data.currency);
+        if (data.time_zone) setTimeZone(data.time_zone);
+        
+        // Load integration settings
+        if (data.enable_learning !== undefined) setEnableLearning(data.enable_learning);
+        if (data.enable_analytics !== undefined) setEnableAnalytics(data.enable_analytics);
+        if (data.enable_voice_ordering !== undefined) setEnableVoiceOrdering(data.enable_voice_ordering);
+        if (data.enable_inventory_management !== undefined) setEnableInventoryManagement(data.enable_inventory_management);
+        if (data.enable_event_booking !== undefined) setEnableEventBooking(data.enable_event_booking);
+        
+        // Load security settings
+        if (data.require_staff_pin !== undefined) setRequireStaffPin(data.require_staff_pin);
+        if (data.enable_audit_log !== undefined) setEnableAuditLog(data.enable_audit_log);
+        if (data.session_timeout !== undefined) setSessionTimeout(data.session_timeout);
+        
+        // Load notification settings
+        if (data.low_stock_threshold !== undefined) setLowStockThreshold(data.low_stock_threshold);
+        if (data.enable_email_notifications !== undefined) setEnableEmailNotifications(data.enable_email_notifications);
+        if (data.notification_email) setNotificationEmail(data.notification_email);
       })
       .catch((error) => {
         console.error("Failed to load config:", error);
@@ -167,6 +216,26 @@ export function SettingsView() {
         echo_cancellation: echoCancellation,
         personality_mode: personalityMode,
         verbosity: verbosity,
+        // Business settings
+        venue_name: venueName,
+        venue_location: venueLocation,
+        default_tax_rate: defaultTaxRate,
+        currency: currency,
+        time_zone: timeZone,
+        // Integration settings
+        enable_learning: enableLearning,
+        enable_analytics: enableAnalytics,
+        enable_voice_ordering: enableVoiceOrdering,
+        enable_inventory_management: enableInventoryManagement,
+        enable_event_booking: enableEventBooking,
+        // Security settings
+        require_staff_pin: requireStaffPin,
+        enable_audit_log: enableAuditLog,
+        session_timeout: sessionTimeout,
+        // Notification settings
+        low_stock_threshold: lowStockThreshold,
+        enable_email_notifications: enableEmailNotifications,
+        notification_email: notificationEmail,
       };
 
       const configData = provider === "openai" 
@@ -183,7 +252,7 @@ export function SettingsView() {
       
       toast({
         title: "Settings Saved",
-        description: "All voice agent settings have been updated and will take effect on next connection.",
+        description: "All configuration settings have been updated and will take effect immediately.",
       });
     } catch (error) {
       toast({
@@ -204,11 +273,13 @@ export function SettingsView() {
       </CardHeader>
       <CardContent>
         <Tabs defaultValue="voice" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-6">
             <TabsTrigger value="voice">Voice & Audio</TabsTrigger>
             <TabsTrigger value="behavior">Behavior</TabsTrigger>
             <TabsTrigger value="detection">Detection</TabsTrigger>
-            <TabsTrigger value="advanced">Advanced</TabsTrigger>
+            <TabsTrigger value="business">Business</TabsTrigger>
+            <TabsTrigger value="integrations">Features</TabsTrigger>
+            <TabsTrigger value="security">Security</TabsTrigger>
           </TabsList>
 
           <TabsContent value="voice" className="space-y-6">
@@ -463,6 +534,252 @@ export function SettingsView() {
                   <div>VAD Threshold: {vadThreshold.toFixed(2)} | Silence: {silenceDuration}ms</div>
                   <div>Style: {responseStyle} | Personality: {personalityMode}</div>
                 </div>
+              </div>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="business" className="space-y-6">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="venueName">Venue Name</Label>
+                <Input
+                  id="venueName"
+                  type="text"
+                  value={venueName}
+                  onChange={(e) => setVenueName(e.target.value)}
+                  placeholder="Your venue name"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="venueLocation">Venue Location</Label>
+                <Input
+                  id="venueLocation"
+                  type="text"
+                  value={venueLocation}
+                  onChange={(e) => setVenueLocation(e.target.value)}
+                  placeholder="City, State"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="defaultTaxRate">Default Tax Rate (%)</Label>
+                <Slider
+                  id="defaultTaxRate"
+                  min={0}
+                  max={15}
+                  step={0.25}
+                  value={[defaultTaxRate]}
+                  onValueChange={(value) => setDefaultTaxRate(value[0])}
+                  className="w-full"
+                />
+                <div className="text-xs text-muted-foreground">
+                  Current rate: {defaultTaxRate.toFixed(2)}%
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="currency">Currency</Label>
+                <Select value={currency} onValueChange={setCurrency}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select currency" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="USD">USD ($)</SelectItem>
+                    <SelectItem value="EUR">EUR (€)</SelectItem>
+                    <SelectItem value="GBP">GBP (£)</SelectItem>
+                    <SelectItem value="CAD">CAD (C$)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="timeZone">Time Zone</Label>
+              <Select value={timeZone} onValueChange={setTimeZone}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select time zone" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="America/New_York">Eastern Time</SelectItem>
+                  <SelectItem value="America/Chicago">Central Time</SelectItem>
+                  <SelectItem value="America/Denver">Mountain Time</SelectItem>
+                  <SelectItem value="America/Los_Angeles">Pacific Time</SelectItem>
+                  <SelectItem value="Europe/London">London</SelectItem>
+                  <SelectItem value="Europe/Paris">Paris</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="lowStockThreshold">Low Stock Alert Threshold</Label>
+              <Slider
+                id="lowStockThreshold"
+                min={1}
+                max={20}
+                step={1}
+                value={[lowStockThreshold]}
+                onValueChange={(value) => setLowStockThreshold(value[0])}
+                className="w-full"
+              />
+              <div className="text-xs text-muted-foreground">
+                Alert when inventory drops below {lowStockThreshold} units
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <div className="flex items-center space-x-2">
+                  <Switch
+                    id="enableEmailNotifications"
+                    checked={enableEmailNotifications}
+                    onCheckedChange={setEnableEmailNotifications}
+                  />
+                  <Label htmlFor="enableEmailNotifications">Email Notifications</Label>
+                </div>
+                {enableEmailNotifications && (
+                  <Input
+                    type="email"
+                    value={notificationEmail}
+                    onChange={(e) => setNotificationEmail(e.target.value)}
+                    placeholder="notification@yourvenue.com"
+                  />
+                )}
+              </div>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="integrations" className="space-y-6">
+            <div className="space-y-4">
+              <h4 className="font-medium">Voice Agent Features</h4>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="flex items-center space-x-2">
+                  <Switch
+                    id="enableVoiceOrdering"
+                    checked={enableVoiceOrdering}
+                    onCheckedChange={setEnableVoiceOrdering}
+                  />
+                  <Label htmlFor="enableVoiceOrdering">Voice Ordering</Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Switch
+                    id="enableInventoryManagement"
+                    checked={enableInventoryManagement}
+                    onCheckedChange={setEnableInventoryManagement}
+                  />
+                  <Label htmlFor="enableInventoryManagement">Inventory Management</Label>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="flex items-center space-x-2">
+                  <Switch
+                    id="enableEventBooking"
+                    checked={enableEventBooking}
+                    onCheckedChange={setEnableEventBooking}
+                  />
+                  <Label htmlFor="enableEventBooking">Event Booking</Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Switch
+                    id="enableAnalytics"
+                    checked={enableAnalytics}
+                    onCheckedChange={setEnableAnalytics}
+                  />
+                  <Label htmlFor="enableAnalytics">Analytics & Reporting</Label>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <h4 className="font-medium">Learning & Intelligence</h4>
+              <div className="flex items-center space-x-2">
+                <Switch
+                  id="enableLearning"
+                  checked={enableLearning}
+                  onCheckedChange={setEnableLearning}
+                />
+                <Label htmlFor="enableLearning">AI Learning System</Label>
+              </div>
+              <div className="text-sm text-muted-foreground">
+                Enable Bev to learn from interactions and improve responses over time
+              </div>
+            </div>
+
+            <div className="p-4 border rounded-lg bg-blue-50 dark:bg-blue-950">
+              <h4 className="font-medium mb-2 text-blue-800 dark:text-blue-200">
+                🎤 Voice Menu Management
+              </h4>
+              <div className="text-sm text-blue-700 dark:text-blue-300">
+                <p className="mb-2">Bev can now create and manage menu items through voice commands:</p>
+                <ul className="list-disc list-inside space-y-1">
+                  <li>"Hey Bev, create a new drink" - Add new beverages to the menu</li>
+                  <li>"Remove [drink name] from the menu" - Delete existing items</li>
+                  <li>"Update the price of [drink name]" - Modify pricing</li>
+                  <li>"Add inventory for [drink name]" - Update stock levels</li>
+                </ul>
+              </div>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="security" className="space-y-6">
+            <div className="space-y-4">
+              <h4 className="font-medium">Access Control</h4>
+              <div className="flex items-center space-x-2">
+                <Switch
+                  id="requireStaffPin"
+                  checked={requireStaffPin}
+                  onCheckedChange={setRequireStaffPin}
+                />
+                <Label htmlFor="requireStaffPin">Require Staff PIN for POS Access</Label>
+              </div>
+              <div className="text-sm text-muted-foreground">
+                Staff must enter their PIN before accessing the POS system
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <h4 className="font-medium">Session Management</h4>
+              <div className="space-y-2">
+                <Label htmlFor="sessionTimeout">Session Timeout (minutes)</Label>
+                <Slider
+                  id="sessionTimeout"
+                  min={5}
+                  max={120}
+                  step={5}
+                  value={[sessionTimeout]}
+                  onValueChange={(value) => setSessionTimeout(value[0])}
+                  className="w-full"
+                />
+                <div className="text-xs text-muted-foreground">
+                  Auto-logout after {sessionTimeout} minutes of inactivity
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <h4 className="font-medium">Audit & Compliance</h4>
+              <div className="flex items-center space-x-2">
+                <Switch
+                  id="enableAuditLog"
+                  checked={enableAuditLog}
+                  onCheckedChange={setEnableAuditLog}
+                />
+                <Label htmlFor="enableAuditLog">Enable Audit Logging</Label>
+              </div>
+              <div className="text-sm text-muted-foreground">
+                Track all system actions for compliance and security monitoring
+              </div>
+            </div>
+
+            <div className="p-4 border rounded-lg bg-amber-50 dark:bg-amber-950">
+              <h4 className="font-medium mb-2 text-amber-800 dark:text-amber-200">
+                🔐 Security Best Practices
+              </h4>
+              <div className="text-sm text-amber-700 dark:text-amber-300 space-y-1">
+                <p>• Regular staff PIN rotation recommended</p>
+                <p>• Monitor audit logs for unusual activity</p>
+                <p>• Enable session timeouts for shared devices</p>
+                <p>• Keep OpenAI API keys secure and rotate regularly</p>
               </div>
             </div>
           </TabsContent>

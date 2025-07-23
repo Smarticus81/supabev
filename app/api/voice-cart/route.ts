@@ -1,7 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { invoke } from '../../../lib/tools';
 
+// Simple in-memory cache to reduce database calls
+let lastCartData: any = null;
+let lastCartCheck = 0;
+const CACHE_DURATION = 1000; // Cache for 1 second
+
 export async function GET() {
+  console.log('getCart called with clientId type:', typeof 'default');
+  
+  // Check if we can use cached data
+  const now = Date.now();
+  if (lastCartData && (now - lastCartCheck) < CACHE_DURATION) {
+    return NextResponse.json(lastCartData);
+  }
+
   try {
     // Get the cart data from the same system as MCP server
     const result = await invoke('cart_view', { clientId: 'default' });
@@ -34,7 +47,7 @@ export async function GET() {
           );
           
           if (drinkResult.rows.length > 0) {
-            const drink = drinkResult.rows[0];
+            const drink = drinkResult.rows[0] as { id: number; name: string; price: number };
             const itemTotal = (drink.price * item.quantity) / 100; // Convert cents to dollars
             
             uiCartItems.push({
@@ -68,25 +81,40 @@ export async function GET() {
         }
       }
       
-      return NextResponse.json({
+      const cartData = {
         success: true,
         items: uiCartItems,
         total: total
-      });
+      };
+
+      // Cache the result
+      lastCartData = cartData;
+      lastCartCheck = now;
+      
+      return NextResponse.json(cartData);
     } else {
-      return NextResponse.json({
+      const emptyCartData = {
         success: true,
         items: [],
         total: 0
-      });
+      };
+
+      // Cache the empty result
+      lastCartData = emptyCartData;
+      lastCartCheck = now;
+      
+      return NextResponse.json(emptyCartData);
     }
   } catch (error) {
     console.error('Error getting voice cart:', error);
-    return NextResponse.json({ 
+    const errorData = { 
       success: false, 
       items: [], 
       total: 0 
-    });
+    };
+
+    // Don't cache error responses
+    return NextResponse.json(errorData);
   }
 }
 
@@ -94,6 +122,11 @@ export async function GET() {
 export async function DELETE() {
   try {
     await invoke('cart_clear', { clientId: 'default' });
+    
+    // Clear cache when cart is cleared
+    lastCartData = null;
+    lastCartCheck = 0;
+    
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Error clearing voice cart:', error);

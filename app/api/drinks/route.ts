@@ -57,7 +57,7 @@ export async function GET() {
         existing.cost_per_unit = drink.cost_per_unit || existing.cost_per_unit;
         existing.profit_margin = drink.profit_margin || existing.profit_margin;
         existing.popularity_score = Math.max(existing.popularity_score, drink.popularity_score || 0);
-        existing.updated_at = drink.updated_at > existing.updated_at ? drink.updated_at : existing.updated_at;
+        existing.updated_at = (drink.updated_at && existing.updated_at && drink.updated_at > existing.updated_at) ? drink.updated_at : existing.updated_at;
       } else {
         drinkGroups.set(key, {
           id: drink.id,
@@ -125,6 +125,156 @@ export async function GET() {
   } catch (error) {
     console.error('Failed to fetch drinks:', error);
     return new Response(JSON.stringify({ error: 'Failed to fetch drinks' }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+}
+
+export async function POST(request: Request) {
+  try {
+    const body = await request.json();
+    const { 
+      name, 
+      category, 
+      subcategory, 
+      price, 
+      inventory = 0, 
+      unit_volume_oz, 
+      cost_per_unit, 
+      description,
+      image_url 
+    } = body;
+
+    // Validate required fields
+    if (!name || !category || !price) {
+      return new Response(
+        JSON.stringify({ error: 'Name, category, and price are required' }), 
+        { status: 400, headers: { "Content-Type": "application/json" } }
+      );
+    }
+
+    // Convert price to cents if it's in dollars
+    const priceInCents = typeof price === 'number' ? Math.round(price * 100) : price;
+    const costInCents = cost_per_unit ? Math.round(cost_per_unit * 100) : null;
+
+    // Calculate profit margin if cost is provided
+    const profitMargin = costInCents ? ((priceInCents - costInCents) / priceInCents) * 100 : null;
+
+    // Insert new drink
+    const [newDrink] = await db.insert(drinks).values({
+      name: name.trim(),
+      category: category.trim(),
+      subcategory: subcategory?.trim(),
+      price: priceInCents,
+      inventory: inventory || 0,
+      unit_volume_oz: unit_volume_oz || (category === 'Beer' || category === 'Wine' ? 12 : 1.5),
+      cost_per_unit: costInCents,
+      profit_margin: profitMargin,
+      description: description?.trim(),
+      image_url: image_url?.trim(),
+      is_active: true,
+      updated_at: sql`NOW()`
+    }).returning();
+
+    console.log('✅ Created new drink:', newDrink);
+
+    return new Response(JSON.stringify({
+      success: true,
+      drink: {
+        id: newDrink.id.toString(),
+        name: newDrink.name,
+        category: newDrink.category,
+        subcategory: newDrink.subcategory,
+        price: newDrink.price / 100, // Convert back to dollars
+        inventory: newDrink.inventory,
+        unit_volume_oz: newDrink.unit_volume_oz,
+        cost_per_unit: newDrink.cost_per_unit ? newDrink.cost_per_unit / 100 : null,
+        profit_margin: newDrink.profit_margin,
+        description: newDrink.description,
+        image_url: newDrink.image_url,
+        created_at: newDrink.created_at
+      }
+    }), {
+      status: 201,
+      headers: { "Content-Type": "application/json" },
+    });
+
+  } catch (error) {
+    console.error('❌ Failed to create drink:', error);
+    return new Response(JSON.stringify({ 
+      error: 'Failed to create drink',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+}
+
+export async function DELETE(request: Request) {
+  try {
+    const url = new URL(request.url);
+    const drinkId = url.searchParams.get('id');
+    const drinkName = url.searchParams.get('name');
+
+    if (!drinkId && !drinkName) {
+      return new Response(
+        JSON.stringify({ error: 'Either drink ID or name is required' }), 
+        { status: 400, headers: { "Content-Type": "application/json" } }
+      );
+    }
+
+    // Find and soft-delete the drink(s)
+    let deletedDrinks;
+    if (drinkId) {
+      deletedDrinks = await db
+        .update(drinks)
+        .set({ 
+          is_active: false,
+          updated_at: sql`NOW()`
+        })
+        .where(eq(drinks.id, parseInt(drinkId)))
+        .returning();
+    } else if (drinkName) {
+      deletedDrinks = await db
+        .update(drinks)
+        .set({ 
+          is_active: false,
+          updated_at: sql`NOW()`
+        })
+        .where(eq(drinks.name, drinkName.trim()))
+        .returning();
+    }
+
+    if (!deletedDrinks || deletedDrinks.length === 0) {
+      return new Response(
+        JSON.stringify({ error: 'Drink not found' }), 
+        { status: 404, headers: { "Content-Type": "application/json" } }
+      );
+    }
+
+    console.log('✅ Soft-deleted drink(s):', deletedDrinks);
+
+    return new Response(JSON.stringify({
+      success: true,
+      message: `Successfully removed ${deletedDrinks.length} drink(s)`,
+      deletedDrinks: deletedDrinks.map(drink => ({
+        id: drink.id,
+        name: drink.name,
+        category: drink.category
+      }))
+    }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+
+  } catch (error) {
+    console.error('❌ Failed to delete drink:', error);
+    return new Response(JSON.stringify({ 
+      error: 'Failed to delete drink',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    }), {
       status: 500,
       headers: { "Content-Type": "application/json" },
     });
