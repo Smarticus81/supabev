@@ -21,7 +21,8 @@ export const drinks = pgTable("drinks", {
   category: text("category").notNull(),
   subcategory: text("subcategory"),
   price: integer("price").notNull(), // Price in cents
-  inventory: integer("inventory").notNull(), // Inventory count
+  inventory: integer("inventory").notNull(), // Inventory count (bottles/cans/units)
+  inventory_oz: real("inventory_oz").default(0), // Inventory in ounces for fluid tracking
   unit_type: text("unit_type").notNull().default("ounce"), // "bottle", "glass", "ounce", "shot", "can", "pint"
   unit_volume_oz: real("unit_volume_oz"), // Volume of standard unit in ounces
   serving_size_oz: real("serving_size_oz"), // Standard serving size for this item

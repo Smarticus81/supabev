@@ -23,6 +23,7 @@ import { useForm } from 'react-hook-form'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useToast } from '@/hooks/use-toast'
 import { SettingsView } from "@/components/settings-view"
+import { SafeComponent } from "@/components/error-boundary"
 import Image from "next/image"
 
 interface OrderItem {
@@ -47,6 +48,10 @@ export default function Home() {
   const [volumeLevel, setVolumeLevel] = useState(1);
   const [showMobileSearch, setShowMobileSearch] = useState(false)
 
+  // Initialize hooks
+  const { toast } = useToast()
+  const isMobile = useIsMobile()
+
   // Package options
   const packages = ["Silver Pkg", "Gold Pkg", "Platinum Pkg", "Others"]
 
@@ -65,7 +70,13 @@ export default function Home() {
 
   const fetchDrinks = useCallback(async () => {
       try {
+        setIsLoading(true)
         const response = await fetch("/api/drinks")
+        
+        if (!response.ok) {
+          throw new Error(`Failed to fetch drinks: ${response.status} ${response.statusText}`)
+        }
+        
         const data = await response.json()
 
         const drinksArray: any[] = Array.isArray(data) ? data : [];
@@ -78,9 +89,20 @@ export default function Home() {
         setIsLoading(false)
       } catch (error) {
         console.error("Error fetching drinks:", error)
+        
+        // Show user-friendly error message
+        toast({
+          title: "Error loading drinks",
+          description: "Unable to load drink menu. Please refresh the page or try again later.",
+          variant: "destructive",
+        })
+        
+        // Set fallback data to prevent app crash
+        setDrinks([])
+        setCategories([])
         setIsLoading(false)
       }
-  }, [])
+  }, [toast])
 
   const handleNavigateToTab = (tab: string) => {
     setCurrentTab(tab);
@@ -103,9 +125,15 @@ export default function Home() {
     const pollVoiceCart = async () => {
       try {
         const response = await fetch('/api/voice-cart');
+        
+        if (!response.ok) {
+          // Silently handle 404 or other errors (voice cart may not exist)
+          return;
+        }
+        
         const data = await response.json();
         
-        if (data.success) {
+        if (data.success && Array.isArray(data.items)) {
           // Only update if the cart has changed to prevent unnecessary re-renders
           const currentIds = orders.map(item => item.id).sort();
           const voiceIds = data.items.map((item: any) => item.id).sort();
@@ -116,7 +144,8 @@ export default function Home() {
           }
         }
       } catch (error) {
-        console.error('Error polling voice cart:', error);
+        // Silently handle voice cart errors to prevent UI disruption
+        console.debug('Voice cart polling error:', error.message);
       }
     };
 
@@ -309,16 +338,12 @@ export default function Home() {
     }
   }
 
-  const isMobile = useIsMobile()
-
   const form = useForm({
     defaultValues: {
       tts_provider: 'deepgram',
       tts_voice: 'aura-2-juno-en'
     }
   })
-
-  const { toast } = useToast()
   const [config, setConfig] = useState({ tts_provider: 'deepgram', tts_voice: 'aura-2-juno-en' })
   const [voices, setVoices] = useState<{id: string, name: string}[]>([])
 
@@ -708,15 +733,19 @@ export default function Home() {
 
       {/* Voice Control Button - Fixed on bottom right */}
       <div className="fixed bottom-4 right-4 z-50">
-        <VoiceControlButton 
-          onNavigateToTab={handleNavigateToTab}
-          currentTab={currentTab}
-        />
+        <SafeComponent fallback={<div className="text-xs text-gray-500">Voice unavailable</div>}>
+          <VoiceControlButton 
+            onNavigateToTab={handleNavigateToTab}
+            currentTab={currentTab}
+          />
+        </SafeComponent>
       </div>
 
       {/* Voice Debug Tool - Temporary */}
       <div className="fixed bottom-4 left-4 z-50">
-        <VoiceDebug />
+        <SafeComponent fallback={<div className="text-xs text-gray-500">Debug unavailable</div>}>
+          <VoiceDebug />
+        </SafeComponent>
       </div>
     </div>
   )

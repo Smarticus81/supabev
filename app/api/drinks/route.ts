@@ -23,7 +23,10 @@ export async function GET() {
         price: drinks.price,
         static_inventory: drinks.inventory,
         total_remaining_ml: inventorySubQuery.total_remaining_ml,
+        unit_type: drinks.unit_type,
         unit_volume_oz: drinks.unit_volume_oz,
+        serving_size_oz: drinks.serving_size_oz,
+        servings_per_container: drinks.servings_per_container,
         cost_per_unit: drinks.cost_per_unit,
         profit_margin: drinks.profit_margin,
         popularity_score: drinks.popularity_score,
@@ -53,7 +56,10 @@ export async function GET() {
         // Use the lowest price (better for customers)
         existing.price = Math.min(existing.price, drink.price);
         // Update other fields with latest values
+        existing.unit_type = drink.unit_type || existing.unit_type;
         existing.unit_volume_oz = drink.unit_volume_oz || existing.unit_volume_oz;
+        existing.serving_size_oz = drink.serving_size_oz || existing.serving_size_oz;
+        existing.servings_per_container = drink.servings_per_container || existing.servings_per_container;
         existing.cost_per_unit = drink.cost_per_unit || existing.cost_per_unit;
         existing.profit_margin = drink.profit_margin || existing.profit_margin;
         existing.popularity_score = Math.max(existing.popularity_score, drink.popularity_score || 0);
@@ -67,7 +73,10 @@ export async function GET() {
           price: drink.price,
           static_inventory: drink.static_inventory || 0,
           total_remaining_ml: drink.total_remaining_ml || 0,
+          unit_type: drink.unit_type,
           unit_volume_oz: drink.unit_volume_oz,
+          serving_size_oz: drink.serving_size_oz,
+          servings_per_container: drink.servings_per_container,
           cost_per_unit: drink.cost_per_unit,
           profit_margin: drink.profit_margin,
           popularity_score: drink.popularity_score || 0,
@@ -89,14 +98,17 @@ export async function GET() {
 
       // If there's detailed inventory data, calculate servings from remaining volume
       if (drink.total_remaining_ml > 0) {
-        const unit_volume_ml = (drink.category === 'Beer' || drink.category === 'Wine') ? 355 : 44.3; // ~12oz for beer/wine, 1.5oz for spirits
-        calculatedInventory = Math.floor(drink.total_remaining_ml / unit_volume_ml);
+        // Use serving_size_oz if available, otherwise fall back to defaults
+        const serving_size_ml = drink.serving_size_oz ? drink.serving_size_oz * 29.5735 : 
+          (drink.category === 'Beer' || drink.category === 'Wine') ? 355 : 44.3; // ~12oz for beer/wine, 1.5oz for spirits
+        calculatedInventory = Math.floor(drink.total_remaining_ml / serving_size_ml);
         // Convert ml to oz for UI display (1 ml = 0.033814 oz)
         totalRemainingOz = drink.total_remaining_ml * 0.033814;
       } else {
-        // If no detailed inventory, estimate oz based on static inventory and unit volumes
-        const unit_volume_oz = (drink.category === 'Beer' || drink.category === 'Wine') ? 12 : 1.5;
-        totalRemainingOz = calculatedInventory * unit_volume_oz;
+        // If no detailed inventory, use serving_size_oz if available
+        const serving_size_oz = drink.serving_size_oz || 
+          (drink.category === 'Beer' || drink.category === 'Wine') ? 12 : 1.5;
+        totalRemainingOz = calculatedInventory * serving_size_oz;
       }
 
       return {
@@ -108,12 +120,17 @@ export async function GET() {
         inventory: calculatedInventory,
         inventory_units: calculatedInventory,
         inventory_oz: totalRemainingOz, // Raw volume in ounces for inventory page
-        unit_volume_oz: (drink.category === 'Beer' || drink.category === 'Wine') ? 12 : 1.5, // Unit size
+        unit_type: drink.unit_type,
+        unit_volume_oz: drink.unit_volume_oz, // Keep for backward compatibility
+        serving_size_oz: drink.serving_size_oz || 
+          (drink.category === 'Beer' || drink.category === 'Wine') ? 12 : 1.5, // Unit size
+        servings_per_container: drink.servings_per_container,
         serving_options: [{
           id: 1,
-          name: 'bottle',
+          name: drink.unit_type || 'serving',
           price: drink.price / 100,
-          volume_oz: (drink.category === 'Beer' || drink.category === 'Wine') ? 12 : 1.5
+          volume_oz: drink.serving_size_oz || 
+            (drink.category === 'Beer' || drink.category === 'Wine') ? 12 : 1.5
         }]
       };
     });
@@ -140,7 +157,10 @@ export async function POST(request: Request) {
       subcategory, 
       price, 
       inventory = 0, 
+      unit_type = 'serving',
       unit_volume_oz, 
+      serving_size_oz,
+      servings_per_container,
       cost_per_unit, 
       description,
       image_url 
@@ -168,7 +188,10 @@ export async function POST(request: Request) {
       subcategory: subcategory?.trim(),
       price: priceInCents,
       inventory: inventory || 0,
-      unit_volume_oz: unit_volume_oz || (category === 'Beer' || category === 'Wine' ? 12 : 1.5),
+      unit_type: unit_type,
+      unit_volume_oz: unit_volume_oz,
+      serving_size_oz: serving_size_oz || (category === 'Beer' || category === 'Wine' ? 12 : 1.5),
+      servings_per_container: servings_per_container,
       cost_per_unit: costInCents,
       profit_margin: profitMargin,
       description: description?.trim(),

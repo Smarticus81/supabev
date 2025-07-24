@@ -104,7 +104,13 @@ class PremiumVoiceServer {
     this.voiceServer = new WebSocket.Server({ 
       port: VOICE_SERVER_PORT,
       perMessageDeflate: false,
-      maxPayload: 1024 * 1024 // 1MB max payload for audio
+      maxPayload: 1024 * 1024, // 1MB max payload for audio
+      clientTracking: true,
+      // Optimize for low latency
+      verifyClient: (info) => {
+        // Fast client verification
+        return true;
+      }
     });
 
     this.voiceServer.on('connection', (ws) => {
@@ -289,10 +295,20 @@ class PremiumVoiceServer {
     this.sendToClient(ws, { type: 'agent_state', state: AGENT_STATE.PROCESSING });
     
     try {
-      // Process with intent processor
-      await processTranscript(transcript, ws, this.voiceServer.clients, 'command');
+      // Process with intent processor (don't await for faster response)
+      const processingPromise = processTranscript(transcript, ws, this.voiceServer.clients, 'command');
       
-      // Return to wake word mode
+      // Immediately acknowledge command received
+      this.sendToClient(ws, {
+        type: 'command_acknowledged',
+        transcript,
+        timestamp: Date.now()
+      });
+      
+      // Wait for processing to complete
+      await processingPromise;
+      
+      // Return to wake word mode with reduced delay
       setTimeout(() => {
         if (this.clients.has(ws)) {
           clientState.voiceMode = VOICE_MODE.WAKE_WORD;
@@ -303,7 +319,7 @@ class PremiumVoiceServer {
             timestamp: Date.now()
           });
         }
-      }, 1000);
+      }, 500); // Reduced from 1000ms to 500ms
       
     } catch (error) {
       console.error(`🎤 Command processing error for ${clientState.id}:`, error);

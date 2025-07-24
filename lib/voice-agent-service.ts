@@ -1,7 +1,11 @@
-import db from '../db/index';
+import db, { drinkCache, inventoryCache, getCachedData, setCachedData, clearCache } from '../db/index';
 import { drinks, orders, customers, venues, eventBookings, inventory, transactions } from '../db/schema';
 import { eq, like, desc, sql, and, gte, lte } from 'drizzle-orm';
 import type { NewOrder, NewCustomer, NewEventBooking, NewTransaction } from '../db/schema';
+import { performanceMonitor, timeOperation, timed } from './performance-monitor';
+import { inventoryService } from './inventory-service';
+import { simpleInventoryService } from './simple-inventory-service';
+import { paymentService } from './payment-service';
 
 // Cart state management (in-memory for voice sessions)
 interface CartItem {
@@ -33,30 +37,46 @@ export class VoiceAgentService {
   async addDrinkToCart(drink_name: string, quantity: number = 1) {
     try {
       // Normalize drink name and search
-      const normalizedName = drink_name.trim();
+      const normalizedName = drink_name.trim().toLowerCase();
+      const cacheKey = `drink:${normalizedName}`;
       
-      // Search for drink (case-insensitive, partial match)
-      const drink = await db.select()
-        .from(drinks)
-        .where(
-          sql`LOWER(${drinks.name}) LIKE LOWER(${`%${normalizedName}%`})`
-        )
-        .limit(1);
+      // Check cache first
+      let foundDrink = getCachedData(cacheKey, drinkCache);
+      
+      if (!foundDrink) {
+        // Search for drink (case-insensitive, partial match)
+        const drink = await db.select()
+          .from(drinks)
+          .where(
+            sql`LOWER(${drinks.name}) LIKE LOWER(${`%${normalizedName}%`}) AND is_active = true`
+          )
+          .limit(1);
 
-      if (!drink.length) {
+        if (!drink.length) {
+          return {
+            success: false,
+            message: `Drink "${drink_name}" not found. Please check the name and try again.`
+          };
+        }
+
+        foundDrink = drink[0];
+        // Cache the result
+        setCachedData(cacheKey, foundDrink, drinkCache);
+      }
+
+      // Check inventory using simple inventory check
+      const inventoryInfo = await simpleInventoryService.getDrinkInventory(foundDrink.id);
+      if (!inventoryInfo.success || !inventoryInfo.drink) {
         return {
           success: false,
-          message: `Drink "${drink_name}" not found. Please check the name and try again.`
+          message: `Unable to get inventory information for ${foundDrink.name}.`
         };
       }
 
-      const foundDrink = drink[0];
-
-      // Check inventory
-      if (foundDrink.inventory < quantity) {
+      if (inventoryInfo.drink.inventory < quantity) {
         return {
           success: false,
-          message: `Sorry, only ${foundDrink.inventory} ${foundDrink.name} available in stock.`
+          message: `Sorry, only ${inventoryInfo.drink.inventory} units of ${foundDrink.name} available in stock.`
         };
       }
 
@@ -203,6 +223,7 @@ export class VoiceAgentService {
       const subtotal = Math.floor(total * 0.926); // Approximate subtotal before tax
       const tax_amount = total - subtotal;
       
+      // Create order with pending status initially
       const orderData: NewOrder = {
         items: cart.map(item => ({
           drink_id: item.drink_id,
@@ -213,28 +234,138 @@ export class VoiceAgentService {
         subtotal,
         tax_amount,
         total,
-        status: 'completed',
-        payment_status: 'completed'
+        status: 'processing',
+        payment_status: 'pending'
       };
 
       const [newOrder] = await db.insert(orders).values(orderData).returning();
 
-      // Update inventory
-      for (const item of cart) {
-        await db.update(drinks)
-          .set({ inventory: sql`${drinks.inventory} - ${item.quantity}` })
-          .where(eq(drinks.id, item.drink_id));
+      // Process inventory deductions using simple, reliable inventory updates
+      console.log(`📦 Processing inventory deductions for order ${newOrder.id}...`);
+      
+      const cartItems = cart.map(item => ({
+        drinkId: item.drink_id,
+        quantity: item.quantity,
+        name: item.name
+      }));
+
+      const inventoryResult = await simpleInventoryService.updateOrderInventory(
+        newOrder.id,
+        cartItems
+      );
+
+      if (!inventoryResult.success) {
+        console.error('Error processing inventory deductions:', inventoryResult.errors);
+        // Update order status to failed
+        await db.update(orders)
+          .set({ 
+            status: 'cancelled',
+            notes: `Inventory error: ${inventoryResult.errors.join(', ')}`
+          })
+          .where(eq(orders.id, newOrder.id));
+        
+        return {
+          success: false,
+          message: `Order failed: ${inventoryResult.errors.join(', ')}`
+        };
       }
+
+      console.log(`✅ Inventory updated successfully for ${inventoryResult.updates.length} items`);
+
+      // Process payment automatically (simplified approach for reliability)
+      let paymentResult;
+      let transactionId;
+      
+      try {
+        console.log(`💳 Processing payment for order ${newOrder.id}...`);
+        
+        // Create transaction record directly for reliability
+        const transactionData = {
+          order_id: newOrder.id,
+          transaction_type: 'sale',
+          amount: total,
+          payment_method: 'cash',
+          payment_processor: 'voice_system',
+          processor_transaction_id: `VOICE_${Date.now()}_${newOrder.id}`,
+          status: 'completed',
+          net_amount: total,
+          processed_at: sql`NOW()`,
+          created_at: sql`NOW()`
+        };
+
+        const [newTransaction] = await db.insert(transactions).values(transactionData).returning();
+        transactionId = newTransaction.id;
+        
+        console.log(`✅ Transaction ${transactionId} created successfully`);
+        paymentResult = { success: true, transactionId };
+        
+      } catch (error) {
+        console.error('❌ Direct payment processing failed:', error);
+        
+        // Try the payment service as fallback
+        try {
+          paymentResult = await paymentService.autoProcessPayment(newOrder.id, 'cash');
+          transactionId = paymentResult.transactionId;
+        } catch (fallbackError) {
+          console.error('❌ Fallback payment also failed:', fallbackError);
+          
+          // Update order status to failed
+          await db.update(orders)
+            .set({ 
+              status: 'cancelled',
+              payment_status: 'failed',
+              notes: `Payment error: ${error.message || 'Payment processing failed'}`
+            })
+            .where(eq(orders.id, newOrder.id));
+          
+          return {
+            success: false,
+            message: `Payment failed: ${error.message || 'Payment processing failed'}`
+          };
+        }
+      }
+      
+      if (!paymentResult.success) {
+        console.error('Payment processing failed:', paymentResult.message);
+        
+        // Update order status to failed
+        await db.update(orders)
+          .set({ 
+            status: 'cancelled',
+            payment_status: 'failed',
+            notes: `Payment error: ${paymentResult.message}`
+          })
+          .where(eq(orders.id, newOrder.id));
+        
+        return {
+          success: false,
+          message: `Payment failed: ${paymentResult.message}`
+        };
+      }
+
+      // Update order to completed status
+      await db.update(orders)
+        .set({
+          payment_status: 'completed',
+          status: 'completed',
+          payment_method: 'cash',
+          updated_at: sql`NOW()`
+        })
+        .where(eq(orders.id, newOrder.id));
+
+      console.log(`✅ Order ${newOrder.id} completed successfully`);
 
       // Clear cart
       this.setCart([]);
 
       return {
         success: true,
-        message: `Order #${newOrder.id} processed successfully`,
+        message: `Order #${newOrder.id} processed successfully with payment of $${(total / 100).toFixed(2)}`,
         order_id: newOrder.id,
+        transaction_id: transactionId,
         total: total / 100,
-        items: cart.length
+        items: cart.length,
+        payment_method: 'cash'
       };
     } catch (error) {
       console.error('Error processing order:', error);
@@ -245,27 +376,38 @@ export class VoiceAgentService {
     }
   }
 
-  // 🔍 SEARCH & INVENTORY
+  // 🔍 SEARCH & INVENTORY  
   async searchDrinks(query: string) {
     try {
-      // Use consolidated inventory query to avoid duplicates
-      const results = await db.execute(
-        sql`
-          SELECT 
-            MIN(id) as id,
-            name,
-            category,
-            MIN(price) as price,
-            SUM(inventory) as inventory,
-            bool_and(is_active) as is_active
-          FROM drinks
-          WHERE (LOWER(name) LIKE LOWER(${`%${query}%`}) OR LOWER(category) LIKE LOWER(${`%${query}%`}))
-          AND is_active = true
-          GROUP BY name, category
-          ORDER BY SUM(inventory) DESC
-          LIMIT 10
-        `
-      );
+      const normalizedQuery = query.trim().toLowerCase();
+      const cacheKey = `search:${normalizedQuery}`;
+      
+      // Check cache first
+      let results = getCachedData(cacheKey, drinkCache);
+      
+      if (!results) {
+        // Use consolidated inventory query to avoid duplicates
+        results = await db.execute(
+          sql`
+            SELECT 
+              MIN(id) as id,
+              name,
+              category,
+              MIN(price) as price,
+              SUM(inventory) as inventory,
+              bool_and(is_active) as is_active
+            FROM drinks
+            WHERE (LOWER(name) LIKE LOWER(${`%${normalizedQuery}%`}) OR LOWER(category) LIKE LOWER(${`%${normalizedQuery}%`}))
+            AND is_active = true
+            GROUP BY name, category
+            ORDER BY SUM(inventory) DESC
+            LIMIT 10
+          `
+        );
+        
+        // Cache search results
+        setCachedData(cacheKey, results, drinkCache);
+      }
 
       return {
         success: true,
@@ -290,38 +432,59 @@ export class VoiceAgentService {
   async getInventoryStatus(drink_name?: string) {
     try {
       if (drink_name) {
-        // Use the new database function for consolidated inventory
-        const result = await db.execute(
-          sql`SELECT * FROM get_drink_inventory(${drink_name})`
-        );
+        // Find the drink first
+        const [drink] = await db.select()
+          .from(drinks)
+          .where(sql`LOWER(${drinks.name}) LIKE LOWER(${`%${drink_name}%`})`)
+          .limit(1);
 
-        if (!result.rows.length) {
+        if (!drink) {
           return {
             success: false,
             message: `Drink "${drink_name}" not found`
           };
         }
 
-        const drink = result.rows[0];
+        const inventoryInfo = await simpleInventoryService.getDrinkInventory(drink.id);
+        if (!inventoryInfo.success || !inventoryInfo.drink) {
+          return {
+            success: false,
+            message: `Unable to get inventory for ${drink_name}`
+          };
+        }
+
         return {
           success: true,
-          drink: drink.name,
-          inventory: drink.total_inventory,
-          status: drink.status
+          drink: {
+            id: inventoryInfo.drink.id,
+            name: inventoryInfo.drink.name,
+            category: inventoryInfo.drink.category,
+            inventory: inventoryInfo.drink.inventory,
+            servingSize: inventoryInfo.drink.servingSize,
+            status: inventoryInfo.drink.inventory > 10 ? 'good' : 
+                   inventoryInfo.drink.inventory > 0 ? 'low' : 'out_of_stock'
+          }
         };
       }
 
-      // Return all inventory
-      const allDrinks = await db.select().from(drinks);
-      
-      return {
-        success: true,
-        inventory: allDrinks.map(drink => ({
+      // Return all drinks with simple inventory information
+      const allDrinks = await db.select().from(drinks).where(eq(drinks.is_active, true));
+      const inventoryStatus = [];
+
+      for (const drink of allDrinks) {
+        inventoryStatus.push({
+          id: drink.id,
           name: drink.name,
           category: drink.category,
-          count: drink.inventory,
-          status: drink.inventory > 5 ? 'good' : drink.inventory > 0 ? 'low' : 'out_of_stock'
-        }))
+          inventory: drink.inventory,
+          status: drink.inventory > 10 ? 'good' : 
+                 drink.inventory > 0 ? 'low' : 'out_of_stock'
+        });
+      }
+
+      return {
+        success: true,
+        inventory: inventoryStatus
       };
     } catch (error) {
       console.error('Error getting inventory status:', error);

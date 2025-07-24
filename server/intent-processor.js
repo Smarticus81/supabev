@@ -552,9 +552,9 @@ async function executeIntent(intent, entities, conversationalResponse, transcrip
         return;
     }
 
-    // Add client ID for cart-related operations
+    // Add client ID for cart-related operations - use consistent 'default' clientId
     if (['cart_add', 'cart_remove', 'cart_view', 'cart_clear', 'cart_add_multiple', 'cart_create_order'].includes(intent)) {
-        entities.clientId = `client_${ws._socket?.remoteAddress}_${ws._socket?.remotePort}` || `client_${Date.now()}`;
+        entities.clientId = 'default'; // Use consistent client ID for voice cart synchronization
     }
     
     // Execute MCP tool with enhanced error handling
@@ -588,7 +588,7 @@ async function executeIntent(intent, entities, conversationalResponse, transcrip
     
     // Broadcast cart updates for relevant operations
     if (['cart_add', 'cart_remove', 'cart_clear', 'cart_add_multiple', 'cart_create_order'].includes(intent) && mcpResult) {
-        await broadcastCartUpdate(entities.clientId, connectedClients);
+        await broadcastCartUpdate('default', connectedClients); // Use consistent 'default' clientId
     }
     
     // Broadcast inventory updates for operations that affect inventory

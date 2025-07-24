@@ -140,6 +140,10 @@ class MCPServer {
                 case 'get_low_inventory_bottles':
                     return await this.getLowInventoryBottles(params);
                 
+                // Drink menu management
+                case 'create_drink':
+                    return await this.createDrink(params);
+                
                 default:
                     throw new Error(`Unknown tool: ${toolName}`);
             }
@@ -850,6 +854,112 @@ class MCPServer {
             };
         } catch (error) {
             return { success: false, error: error.message };
+        }
+    }
+
+    async createDrink(params) {
+        const { 
+            name, 
+            category, 
+            subcategory = null,
+            price, 
+            inventory = 0,
+            unit_type = 'ounce',
+            unit_volume_oz = null,
+            cost_per_unit = null,
+            description = null,
+            image_url = null,
+            ingredients = []
+        } = params;
+        
+        try {
+            // Convert price from dollars to cents
+            const priceInCents = Math.round(price * 100);
+            const costInCents = cost_per_unit ? Math.round(cost_per_unit * 100) : null;
+            
+            // Set appropriate serving sizes and volume based on category
+            let serving_size_oz = unit_volume_oz;
+            let servings_per_container = 1;
+            
+            if (!serving_size_oz) {
+                switch (category.toLowerCase()) {
+                    case 'spirits':
+                        serving_size_oz = 1.5;
+                        servings_per_container = Math.floor(25.4 / 1.5); // ~17 shots per 750ml bottle
+                        break;
+                    case 'wine':
+                        serving_size_oz = 5.0;
+                        servings_per_container = Math.floor(25.4 / 5.0); // ~5 glasses per 750ml bottle
+                        break;
+                    case 'beer':
+                        serving_size_oz = 12.0;
+                        servings_per_container = 1; // 1 serving per 12oz bottle
+                        break;
+                    case 'cocktails':
+                        serving_size_oz = 8.0;
+                        servings_per_container = 1; // 1 serving per cocktail
+                        break;
+                    default:
+                        serving_size_oz = 8.0;
+                        servings_per_container = 1;
+                }
+            }
+            
+            // Insert the new drink
+            const result = await this.db.execute(
+                sql`
+                    INSERT INTO drinks (
+                        name, category, subcategory, price, inventory, 
+                        unit_type, unit_volume_oz, serving_size_oz, 
+                        servings_per_container, cost_per_unit, 
+                        description, image_url, is_active
+                    ) VALUES (
+                        ${name}, ${category}, ${subcategory}, ${priceInCents}, ${inventory},
+                        ${unit_type}, ${unit_volume_oz}, ${serving_size_oz},
+                        ${servings_per_container}, ${costInCents},
+                        ${description}, ${image_url}, true
+                    ) RETURNING *
+                `
+            );
+            
+            const newDrink = result.rows[0];
+            
+            // If ingredients are provided, create cocktail recipe entries
+            // (This would require a cocktail_recipes table - for now we'll store in description)
+            if (ingredients && ingredients.length > 0) {
+                const ingredientsList = ingredients.map(ing => 
+                    `${ing.amount} ${ing.unit} ${ing.ingredient_name}`
+                ).join(', ');
+                
+                const enhancedDescription = description 
+                    ? `${description}. Ingredients: ${ingredientsList}`
+                    : `Ingredients: ${ingredientsList}`;
+                
+                // Update the drink with ingredient information
+                await this.db.execute(
+                    sql`
+                        UPDATE drinks 
+                        SET description = ${enhancedDescription}
+                        WHERE id = ${newDrink.id}
+                    `
+                );
+            }
+            
+            return {
+                success: true,
+                message: `Successfully created ${name}`,
+                drink: {
+                    ...newDrink,
+                    price: newDrink.price / 100, // Convert back to dollars for display
+                    cost_per_unit: newDrink.cost_per_unit ? newDrink.cost_per_unit / 100 : null
+                },
+                ingredients: ingredients || []
+            };
+        } catch (error) {
+            return { 
+                success: false, 
+                error: `Failed to create drink: ${error.message}` 
+            };
         }
     }
 

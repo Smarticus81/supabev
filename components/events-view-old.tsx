@@ -111,7 +111,7 @@ export default function EventsView() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           tool: 'list_event_packages',
-          parameters: {}
+          parameters: { clientId: 'default' }
         })
       })
       
@@ -135,7 +135,7 @@ export default function EventsView() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           tool: 'get_event_bookings',
-          parameters: {}
+          parameters: { clientId: 'default' }
         })
       })
       
@@ -159,6 +159,7 @@ export default function EventsView() {
         body: JSON.stringify({
           tool: 'create_event_package',
           parameters: {
+            clientId: 'default',
             name: newPackage.name,
             description: newPackage.description,
             price_per_person: parseFloat(newPackage.price),
@@ -189,6 +190,7 @@ export default function EventsView() {
         body: JSON.stringify({
           tool: 'book_event',
           parameters: {
+            clientId: 'default',
             customer_name: newBooking.customer_name,
             customer_email: `${newBooking.customer_name?.toLowerCase().replace(' ', '.') || 'customer'}@example.com`,
             package_id: parseInt(newBooking.package_id),

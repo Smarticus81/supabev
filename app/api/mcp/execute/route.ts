@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
         );
         break;
 
-      case 'show_cart':
+      case 'cart_view':
         result = await voiceAgentService.showCart();
         break;
 

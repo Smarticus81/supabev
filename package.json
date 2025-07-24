@@ -23,7 +23,15 @@
     "learning:clean": "node scripts/learning-cli.js clean",
     "learning:validate": "node scripts/learning-cli.js validate",
     "learning:noise": "node scripts/learning-cli.js noise",
-    "learning:venue": "node scripts/learning-cli.js venue"
+    "learning:venue": "node scripts/learning-cli.js venue",
+    "test:latency": "node scripts/test-latency.js",
+    "test:inventory": "node scripts/test-inventory-logic.js",
+    "db:fix-inventory": "tsx db/fix-inventory-schema.ts",
+    "transactions:fix": "node scripts/fix-pending-transactions.js",
+    "transactions:complete": "node scripts/simple-complete-transactions.js",
+    "transactions:force": "tsx db/force-complete-transactions.ts",
+    "transactions:nuclear": "tsx db/force-complete-transactions.ts --nuclear",
+    "perf:monitor": "node -e \"const {performanceMonitor} = require('./lib/performance-monitor'); console.log(performanceMonitor.getStats());\""
   },
   "dependencies": {
     "@deepgram/sdk": "^4.9.1",
@@ -58,11 +66,13 @@
     "@radix-ui/react-toggle-group": "1.1.1",
     "@radix-ui/react-tooltip": "1.1.6",
     "@ricky0123/vad-node": "^0.0.3",
+    "@supabase/supabase-js": "^2.52.1",
     "@vapi-ai/web": "^2.3.8",
     "autoprefixer": "^10.4.20",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "1.0.4",
+    "commander": "^12.0.0",
     "date-fns": "^3.6.0",
     "dotenv": "^16.6.1",
     "drizzle-kit": "^0.31.4",
@@ -79,6 +89,7 @@
     "next-themes": "^0.4.4",
     "node-nlp": "5.0.0-alpha.5",
     "openai": "^5.9.0",
+    "postgres": "^3.4.7",
     "react": "^19",
     "react-day-picker": "8.10.1",
     "react-dom": "^19",
@@ -93,8 +104,7 @@
     "tsx": "^4.20.3",
     "vaul": "^0.9.6",
     "ws": "^8.17.1",
-    "zod": "^3.24.1",
-    "commander": "^12.0.0"
+    "zod": "^3.24.1"
   },
   "devDependencies": {
     "@types/node": "^22",

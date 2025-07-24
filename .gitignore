@@ -25,3 +25,13 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Database
+*.sqlite
+*.db
+
+# Learning logs data (keep structure)
+data/learning-logs/*.jsonl
+
+# Drizzle migrations
+/drizzle

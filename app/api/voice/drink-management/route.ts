@@ -1,4 +1,4 @@
-import db from '../../../../db/index';
+import db, { drinkCache, getCachedData, setCachedData, clearCache } from '../../../../db/index';
 import { drinks } from '../../../../db/schema';
 import { eq, sql } from 'drizzle-orm';
 
@@ -90,6 +90,10 @@ async function createDrink(params: any) {
       is_active: true,
       updated_at: sql`NOW()`
     }).returning();
+
+    // Clear relevant cache entries
+    clearCache(`drink:${name.trim().toLowerCase()}`);
+    clearCache(`search:${category.trim().toLowerCase()}`);
 
     console.log('✅ Voice-created new drink:', newDrink);
 

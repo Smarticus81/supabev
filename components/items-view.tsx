@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Search, Plus, Edit, Trash2, Package, AlertTriangle, Info, RefreshCw } from "lucide-react"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { useToast } from "@/hooks/use-toast"
 import {
   Table,
   TableBody,
@@ -35,6 +36,7 @@ export default function ItemsView({ onAddToOrder, searchQuery, onSearchChange, o
   const [sortBy, setSortBy] = useState("name")
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc")
   const [lastUpdated, setLastUpdated] = useState(new Date())
+  const { toast } = useToast()
 
   // Add functions for item management
   const editItem = (item: any) => {
@@ -46,7 +48,7 @@ export default function ItemsView({ onAddToOrder, searchQuery, onSearchChange, o
       // In a real app, you would call an API to delete the item
       console.log('Deleting item:', item)
       alert(`"${item.name}" has been deleted from the inventory.`)
-      onRefresh() // Refresh the items list
+      fetchDrinks() // Refresh the items list using internal function
     }
   }
 
@@ -62,12 +64,29 @@ export default function ItemsView({ onAddToOrder, searchQuery, onSearchChange, o
       const drinksArray: any[] = Array.isArray(data) ? data : [];
       setAllDrinks(drinksArray);
       setFilteredDrinks(drinksArray);
+      setLastUpdated(new Date()); // Update timestamp on successful refresh
+      
+      // Show success toast
+      toast({
+        title: "Inventory Refreshed",
+        description: `Successfully loaded ${drinksArray.length} items`,
+        duration: 2000,
+      });
     } catch (error: any) {
       setError(error.message);
+      console.error('Error fetching drinks:', error);
+      
+      // Show error toast
+      toast({
+        title: "Refresh Failed",
+        description: error.message || "Failed to refresh inventory data",
+        variant: "destructive",
+        duration: 4000,
+      });
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [toast]);
 
   useEffect(() => {
     fetchDrinks();
@@ -138,7 +157,10 @@ export default function ItemsView({ onAddToOrder, searchQuery, onSearchChange, o
           compare = a.price - b.price
           break
         case "inventory":
-          compare = (a.inventory_oz || 0) - (b.inventory_oz || 0)
+          compare = (a.inventory || 0) - (b.inventory || 0)
+          break
+        case "servings":
+          compare = calculateTotalUnits(a) - calculateTotalUnits(b)
           break
         case "category":
           compare = a.category.localeCompare(b.category)
@@ -169,8 +191,20 @@ export default function ItemsView({ onAddToOrder, searchQuery, onSearchChange, o
   const formatInventoryDisplay = (drink: any) => {
     const inventory = drink.inventory || 0;
     const unitType = drink.unit_type || 'ounce';
+    const category = drink.category || '';
     
-    // Map unit types to display labels
+    // Show number of actual containers based on category
+    if (category === 'Wine') {
+      return `${inventory} bottles`;
+    } else if (category === 'Spirits') {
+      return `${inventory} bottles`;
+    } else if (category === 'Beer') {
+      return `${inventory} bottles/cans`;
+    } else if (category === 'Non-alcoholic') {
+      return `${inventory} bottles/cans`;
+    }
+    
+    // Map unit types to display labels for other categories
     const unitLabels = {
       'bottle': 'bottles',
       'glass': 'glasses', 
@@ -236,6 +270,36 @@ export default function ItemsView({ onAddToOrder, searchQuery, onSearchChange, o
     
     return Math.min((inventory / maxValue) * 100, 100);
   };
+  
+  const calculateTotalUnits = (drink: any) => {
+    const inventory = drink.inventory || 0;
+    const unitType = drink.unit_type || 'ounce';
+    const category = drink.category || '';
+    const servingsPerContainer = drink.servings_per_container || 0;
+    
+    // For spirits (like Woodford Reserve), calculate total shots from bottles
+    if (category === 'Spirits') {
+      // If we have servings_per_container data, use it
+      if (servingsPerContainer > 0) {
+        return inventory * servingsPerContainer;
+      }
+      // Otherwise use a default (average shots per bottle)
+      return inventory * 17; // Standard 750ml bottle has about 17 1.5oz shots
+    }
+    
+    // For wine, calculate total glasses from bottles
+    if (category === 'Wine') {
+      // If we have servings_per_container data, use it
+      if (servingsPerContainer > 0) {
+        return inventory * servingsPerContainer;
+      }
+      // Otherwise use a default (average glasses per bottle)
+      return inventory * 5; // Standard 750ml bottle has about 5 5oz glasses
+    }
+    
+    // For other categories, return the same inventory amount
+    return inventory;
+  };
 
   return (
     <div className="h-full flex flex-col">
@@ -263,6 +327,27 @@ export default function ItemsView({ onAddToOrder, searchQuery, onSearchChange, o
           </Button>
         </div>
       </div>
+
+      {/* Error Display */}
+      {error && (
+        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+          <div className="flex items-center gap-3">
+            <AlertTriangle className="h-5 w-5 text-red-600" />
+            <div>
+              <h3 className="text-sm font-medium text-red-900">Error Loading Inventory</h3>
+              <p className="text-sm text-red-700 mt-1">{error}</p>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={fetchDrinks}
+                className="mt-2 text-red-700 border-red-300 hover:bg-red-100"
+              >
+                Try Again
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Info Banner */}
       <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
@@ -360,9 +445,9 @@ export default function ItemsView({ onAddToOrder, searchQuery, onSearchChange, o
         <CardHeader>
           <CardTitle className="flex items-center justify-between">
             <span>Inventory Items ({filteredDrinks.length})</span>
-            <Button variant="ghost" onClick={onRefresh}>
-              <RefreshCw className="h-4 w-4 mr-2" />
-              Refresh
+            <Button variant="ghost" onClick={fetchDrinks} disabled={isLoading}>
+              <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+              {isLoading ? 'Refreshing...' : 'Refresh'}
             </Button>
           </CardTitle>
         </CardHeader>
@@ -384,8 +469,8 @@ export default function ItemsView({ onAddToOrder, searchQuery, onSearchChange, o
                   </TableHead>
                   <TableHead className="text-right">Cost</TableHead>
                   <TableHead className="text-right">Profit</TableHead>
-                  <TableHead className="cursor-pointer text-center" onClick={() => handleSort("popularity_score")}>
-                    Popularity {sortBy === "popularity_score" && (sortDirection === "asc" ? "↑" : "↓")}
+                  <TableHead className="cursor-pointer text-center" onClick={() => handleSort("servings")}>
+                    Total Servings {sortBy === "servings" && (sortDirection === "asc" ? "↑" : "↓")}
                   </TableHead>
                   <TableHead className="w-[300px] cursor-pointer" onClick={() => handleSort("inventory")}>
                     Stock Level {sortBy === "inventory" && (sortDirection === "asc" ? "↑" : "↓")}
@@ -394,90 +479,121 @@ export default function ItemsView({ onAddToOrder, searchQuery, onSearchChange, o
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredDrinks.map((drink) => {
-                  const status = getInventoryStatus(drink);
-                  const progressValue = getProgressValue(drink);
+                {isLoading ? (
+                  <TableRow>
+                    <TableCell colSpan={9} className="text-center py-8">
+                      <div className="flex items-center justify-center gap-3">
+                        <RefreshCw className="h-5 w-5 animate-spin text-gray-400" />
+                        <span className="text-gray-500">Loading inventory data...</span>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ) : filteredDrinks.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={9} className="text-center py-8">
+                      <div className="flex flex-col items-center gap-3">
+                        <Package className="h-8 w-8 text-gray-400" />
+                        <span className="text-gray-500">
+                          {searchQuery ? `No items found matching "${searchQuery}"` : 'No inventory items found'}
+                        </span>
+                        {searchQuery && (
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            onClick={() => onSearchChange('')}
+                          >
+                            Clear Search
+                          </Button>
+                        )}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  filteredDrinks.map((drink) => {
+                    const status = getInventoryStatus(drink);
+                    const progressValue = getProgressValue(drink);
 
-                  return (
-                    <TableRow key={drink.id || drink.name}>
-                      <TableCell className="font-medium">{drink.name}</TableCell>
-                      <TableCell>
-                        <Badge variant="outline">{drink.category}</Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline">{drink.subcategory || 'N/A'}</Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Badge 
-                          variant="secondary" 
-                          className={
-                            drink.unit_type === 'bottle' ? 'bg-blue-100 text-blue-800' :
-                            drink.unit_type === 'glass' ? 'bg-purple-100 text-purple-800' :
-                            drink.unit_type === 'shot' ? 'bg-orange-100 text-orange-800' :
-                            drink.unit_type === 'ounce' ? 'bg-green-100 text-green-800' :
-                            'bg-gray-100 text-gray-800'
-                          }
-                        >
-                          {drink.unit_type || 'ounce'}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right">{formatPrice(drink.price)}</TableCell>
-                      <TableCell className="text-right">
-                        {drink.cost_per_unit ? formatPrice(drink.cost_per_unit) : 'N/A'}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {drink.profit_margin ? (
-                          <span className={drink.profit_margin > 0.5 ? 'text-green-600 font-medium' : drink.profit_margin > 0.3 ? 'text-yellow-600' : 'text-red-600'}>
-                            {(drink.profit_margin * 100).toFixed(1)}%
-                          </span>
-                        ) : 'N/A'}
-                      </TableCell>
-                      <TableCell className="text-center">
-                        <Badge variant={drink.popularity_score > 75 ? 'default' : drink.popularity_score > 50 ? 'secondary' : 'outline'}>
-                          {drink.popularity_score || 0}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <div className="space-y-1">
-                          <div className="flex items-center justify-between">
-                            <span className={`text-sm font-medium ${status.text}`}>
-                              {formatInventoryDisplay(drink)}
+                    return (
+                      <TableRow key={drink.id || drink.name}>
+                        <TableCell className="font-medium">{drink.name}</TableCell>
+                        <TableCell>
+                          <Badge variant="outline">{drink.category}</Badge>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline">{drink.subcategory || 'N/A'}</Badge>
+                        </TableCell>
+                        <TableCell>
+                          <Badge 
+                            variant="secondary" 
+                            className={
+                              drink.unit_type === 'bottle' ? 'bg-blue-100 text-blue-800' :
+                              drink.unit_type === 'glass' ? 'bg-purple-100 text-purple-800' :
+                              drink.unit_type === 'shot' ? 'bg-orange-100 text-orange-800' :
+                              drink.unit_type === 'ounce' ? 'bg-green-100 text-green-800' :
+                              'bg-gray-100 text-gray-800'
+                            }
+                          >
+                            {drink.unit_type || 'ounce'}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right">{formatPrice(drink.price)}</TableCell>
+                        <TableCell className="text-right">
+                          {drink.cost_per_unit ? formatPrice(drink.cost_per_unit) : 'N/A'}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {drink.profit_margin ? (
+                            <span className={drink.profit_margin > 0.5 ? 'text-green-600 font-medium' : drink.profit_margin > 0.3 ? 'text-yellow-600' : 'text-red-600'}>
+                              {(drink.profit_margin * 100).toFixed(1)}%
                             </span>
-                            <Badge className={status.color}>{status.status}</Badge>
+                          ) : 'N/A'}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <Badge variant={calculateTotalUnits(drink) > 30 ? 'default' : calculateTotalUnits(drink) > 15 ? 'secondary' : 'outline'}>
+                            {calculateTotalUnits(drink)}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <div className="space-y-1">
+                            <div className="flex items-center justify-between">
+                              <span className={`text-sm font-medium ${status.text}`}>
+                                {formatInventoryDisplay(drink)}
+                              </span>
+                              <Badge className={status.color}>{status.status}</Badge>
+                            </div>
+                            <Progress value={progressValue} className="h-2" indicatorClassName={status.progress} />
                           </div>
-                          <Progress value={progressValue} className="h-2" indicatorClassName={status.progress} />
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => onAddToOrder(drink)}
-                          >
-                            <Plus className="h-4 w-4 mr-1" />
-                            Add
-                          </Button>
-                          <Button 
-                            size="icon" 
-                            variant="ghost"
-                            onClick={() => editItem(drink)}
-                          >
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                          <Button 
-                            size="icon" 
-                            variant="ghost" 
-                            className="text-red-600"
-                            onClick={() => deleteItem(drink)}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  )
-                })}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => onAddToOrder(drink)}
+                            >
+                              <Plus className="h-4 w-4 mr-1" />
+                              Add
+                            </Button>
+                            <Button 
+                              size="icon" 
+                              variant="ghost"
+                              onClick={() => editItem(drink)}
+                            >
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                            <Button 
+                              size="icon" 
+                              variant="ghost" 
+                              className="text-red-600"
+                              onClick={() => deleteItem(drink)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })
+                )}
               </TableBody>
             </Table>
           </ScrollArea>

@@ -145,6 +145,7 @@ export function VoiceControlButton({
   // Browser ASR for wake word detection (no speech output)
   const wakeWordRecognitionRef = useRef<any>(null);
   const isWaitingForWakeWordRef = useRef<boolean>(false);
+  const isWakeWordModeRef = useRef<boolean>(false);
 
   // Session management
   const [isStartingSession, setIsStartingSession] = useState(false);
@@ -204,6 +205,23 @@ export function VoiceControlButton({
     window.addEventListener('resize', detectDevice);
     return () => window.removeEventListener('resize', detectDevice);
   }, []);
+
+  // Auto-start wake word mode when component mounts
+  useEffect(() => {
+    console.log('🚀 Voice control component mounted, auto-starting wake word mode...');
+    
+    // Wait a moment for component to fully initialize
+    const initTimer = setTimeout(() => {
+      if (!isListening && !isWakeWordMode) {
+        console.log('🎯 Auto-starting wake word detection...');
+        startWakeWordDetection();
+      }
+    }, 1000);
+
+    return () => {
+      clearTimeout(initTimer);
+    };
+  }, []); // Empty dependency array means this runs once on mount
 
   const initializeAudioElement = () => {
     // Create audio element for playback
@@ -621,7 +639,7 @@ Bev: "Perfect! I've updated the Lavender Martini price to $16.00."
 🔧 FUNCTION USAGE - CRITICAL:
 - ALWAYS use functions for ANY business request
 - Inventory questions → use get_inventory_status (Beer=bottles, Wine=glasses, Spirits=shots, Cocktails=ounces)
-- Cart operations → use add_drink_to_cart, show_cart, etc.
+- Cart operations → use add_drink_to_cart, cart_view, etc.
 - Order inquiries → use get_orders_list, get_order_details
 - Analytics requests → use get_order_analytics, get_profit_margins
 - Event inquiries → use list_event_packages, get_event_bookings
@@ -679,7 +697,7 @@ Remember: Create the perfect illusion of instant response while maintaining natu
           },
           {
             type: "function",
-            name: "show_cart",
+            name: "cart_view",
             description: "Display the current cart contents",
             parameters: {
               type: "object",
@@ -1475,6 +1493,16 @@ Remember: Create the perfect illusion of instant response while maintaining natu
         setPendingFunctionCalls(new Set());
         setLastResponseTime(Date.now());
         setIsProcessingFunction(false); // Reset processing state when response is done
+        
+        // Auto-return to wake word mode after a period of inactivity (unless already terminated)
+        setTimeout(() => {
+          // Only return to wake word mode if we're still in active conversation mode
+          // and haven't already been terminated by a terminating phrase
+          if (isListening && !isWakeWordMode && !isProcessing) {
+            console.log('🔄 Auto-returning to wake word mode after conversation inactivity');
+            stopListening(true); // Pass true to return to wake word mode
+          }
+        }, 10000); // 10 seconds of inactivity before returning to wake word mode
         break;
 
       case 'input_audio_buffer.speech_started':
@@ -1550,7 +1578,14 @@ Remember: Create the perfect illusion of instant response while maintaining natu
             'i am done',
             'goodbye bev',
             'bye bev',
-            'end conversation'
+            'end conversation',
+            'thanks',
+            'thank you',
+            'goodbye',
+            'bye',
+            'see you later',
+            'catch you later',
+            'talk to you later'
           ];
           
           const shouldReturnToWakeWord = terminatingPhrases.some(phrase => 
@@ -1560,28 +1595,18 @@ Remember: Create the perfect illusion of instant response while maintaining natu
           if (shouldReturnToWakeWord) {
             console.log('🔄 Terminating phrase detected, returning to wake word mode');
             
-            // Wait for AI to finish speaking before returning to wake word mode
-            const waitForAIToFinish = () => {
-              if (isPlaying) {
-                console.log('⏳ AI is still speaking, waiting...');
-                setTimeout(waitForAIToFinish, 500);
-                return;
+            // Immediate return to wake word mode - don't wait for AI to finish
+            setTimeout(async () => {
+              try {
+                await stopListening(true); // Pass true to return to wake word mode
+              } catch (error) {
+                console.error('❌ Error returning to wake word mode:', error);
+                // Fallback: try to start wake word detection directly
+                setTimeout(() => {
+                  startWakeWordDetection();
+                }, 1000);
               }
-              
-              console.log('✅ AI finished speaking, now returning to wake word mode');
-              setTimeout(async () => {
-                try {
-                  await stopListening();
-                  setTimeout(() => {
-                    startWakeWordDetection();
-                  }, 200); // Reduced delay for faster response
-                } catch (error) {
-                  console.error('❌ Error returning to wake word mode:', error);
-                }
-              }, 200); // Reduced delay for faster response
-            };
-            
-            waitForAIToFinish();
+            }, 1000); // Short delay to allow current response to process
           }
         }
         break;
@@ -1668,12 +1693,23 @@ Remember: Create the perfect illusion of instant response while maintaining natu
           console.log('🔧 Executing function call:', currentFunctionCall.current.name);
           
           // Execute the function call with proper function name using voice-advanced API
+          const toolMap: { [key: string]: string } = {
+            add_drink_to_cart: 'cart_add',
+            remove_drink_from_cart: 'cart_remove',
+            clear_cart: 'cart_clear',
+            process_order: 'cart_create_order',
+            show_cart: 'cart_view',
+          };
+          const backendTool = toolMap[currentFunctionCall.current.name] || currentFunctionCall.current.name;
           fetch('/api/voice-advanced', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              tool: currentFunctionCall.current.name, // Use 'tool' instead of 'name'
-              parameters: parsedArguments // Use 'parameters' instead of 'tool_input'
+              tool: backendTool,
+              parameters: {
+                ...parsedArguments,
+                clientId: 'default' // Add consistent client ID
+              }
             })
           })
           .then(response => response.json())
@@ -1693,7 +1729,7 @@ Remember: Create the perfect illusion of instant response while maintaining natu
               setTimeout(() => updateCartDisplay(), 100);
               setTimeout(() => updateCartDisplay(), 500);
               setTimeout(() => updateCartDisplay(), 1000);
-            } else if (['add_drink_to_cart', 'remove_drink_from_cart', 'show_cart', 'clear_cart'].includes(currentFunctionCall.current?.name || '')) {
+            } else if (["add_drink_to_cart", "remove_drink_from_cart", "cart_view", "clear_cart"].includes(currentFunctionCall.current?.name || '')) {
               console.log('🔄 Updating cart display after function:', currentFunctionCall.current?.name);
               updateCartDisplay();
             }
@@ -1857,8 +1893,8 @@ Remember: Create the perfect illusion of instant response while maintaining natu
     }
   };
 
-  const stopListening = async () => {
-    console.log('🛑 Stopping voice session...');
+  const stopListening = async (shouldReturnToWakeWord: boolean = false) => {
+    console.log('🛑 Stopping voice session...', shouldReturnToWakeWord ? '(will return to wake word mode)' : '');
     
     setIsListening(false);
     setIsProcessing(false);
@@ -1870,16 +1906,29 @@ Remember: Create the perfect illusion of instant response while maintaining natu
     setPendingFunctionCalls(new Set());
     currentResponseId.current = null;
     
-    // Clean up wake word detection
-    setIsWakeWordMode(false);
-    setIsWaitingForWakeWord(false);
-    isWaitingForWakeWordRef.current = false;
+    // Clean up current wake word detection but don't disable mode if we're returning to it
     if (wakeWordRecognitionRef.current) {
       wakeWordRecognitionRef.current.stop();
       wakeWordRecognitionRef.current = null;
     }
     
+    if (!shouldReturnToWakeWord) {
+      // Only fully disable wake word mode if we're not returning to it
+      setIsWakeWordMode(false);
+      isWakeWordModeRef.current = false;
+      setIsWaitingForWakeWord(false);
+      isWaitingForWakeWordRef.current = false;
+    }
+    
     cleanup();
+    
+    // Return to wake word mode if requested
+    if (shouldReturnToWakeWord) {
+      console.log('🔄 Returning to wake word mode...');
+      setTimeout(() => {
+        startWakeWordDetection();
+      }, 500); // Small delay to ensure cleanup is complete
+    }
   };
 
   const cleanup = () => {
@@ -1931,9 +1980,11 @@ Remember: Create the perfect illusion of instant response while maintaining natu
   };
 
   const toggleListening = () => {
-    if (isListening || isWakeWordMode) {
-      stopListening();
+    if (isListening || isWakeWordModeRef.current) {
+      // If currently in any voice mode, stop completely (don't return to wake word)
+      stopListening(false);
     } else {
+      // If not in voice mode, start wake word detection
       startWakeWordDetection();
     }
   };
@@ -1944,6 +1995,7 @@ Remember: Create the perfect illusion of instant response while maintaining natu
       setIsWaitingForWakeWord(true);
       isWaitingForWakeWordRef.current = true; // Set ref immediately for synchronous access
       setIsWakeWordMode(true);
+      isWakeWordModeRef.current = true; // Set ref immediately for synchronous access
       setError(null);
       setTranscript('');
       
@@ -2037,44 +2089,32 @@ Remember: Create the perfect illusion of instant response while maintaining natu
           setIsWaitingForWakeWord(false);
           isWaitingForWakeWordRef.current = false;
           setIsWakeWordMode(false);
+          isWakeWordModeRef.current = false;
         }
       };
       
       wakeWordRecognitionRef.current.onend = () => {
         console.log('👂 Wake word recognition ended');
-        // If we're still in wake word mode and not transitioning, restart
-        if (isWakeWordMode && !isStartingSession && !isListening) {
+        // If we're still in wake word mode and not transitioning, restart immediately
+        if (isWakeWordModeRef.current && !isStartingSession && !isListening && isWaitingForWakeWordRef.current) {
+          console.log('🔄 Auto-restarting wake word recognition to maintain listening mode');
           setTimeout(() => {
-            if (isWakeWordMode && !isStartingSession && !isListening) {
-              console.log('🔄 Restarting wake word recognition');
+            if (isWakeWordModeRef.current && !isStartingSession && !isListening) {
               try {
-                // Reset the waiting state before restarting
-                setIsWaitingForWakeWord(true);
-                
-                // Create new recognition instance
-                const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-                if (SpeechRecognition) {
-                  wakeWordRecognitionRef.current = new SpeechRecognition();
-                  wakeWordRecognitionRef.current.continuous = true;
-                  wakeWordRecognitionRef.current.interimResults = true;
-                  wakeWordRecognitionRef.current.lang = 'en-US';
-                  
-                  // Re-attach event handlers
-                  wakeWordRecognitionRef.current.onstart = () => {
-                    console.log('� Wake word detection restarted');
-                    setIsWaitingForWakeWord(true);
-                  };
-                  wakeWordRecognitionRef.current.onresult = arguments[0]; // Use same handler
-                  wakeWordRecognitionRef.current.onerror = arguments[1]; // Use same error handler
-                  wakeWordRecognitionRef.current.onend = arguments[2]; // Use same end handler
-                  
-                  wakeWordRecognitionRef.current.start();
-                }
+                startWakeWordDetection();
               } catch (error) {
                 console.warn('⚠️ Could not restart wake word recognition:', error);
+                // Try again after a longer delay
+                setTimeout(() => {
+                  if (isWakeWordModeRef.current && !isStartingSession && !isListening) {
+                    startWakeWordDetection();
+                  }
+                }, 2000);
               }
             }
-          }, 500);
+          }, 100); // Very short delay for continuous listening
+        } else {
+          console.log('👂 Not restarting wake word recognition - mode:', isWakeWordModeRef.current, 'starting:', isStartingSession, 'listening:', isListening, 'waiting:', isWaitingForWakeWordRef.current);
         }
       };
       
@@ -2196,7 +2236,7 @@ Remember: Create the perfect illusion of instant response while maintaining natu
       'get_drink_details': 'I will get those drink details.',
       'get_drinks_by_filter': 'I will filter the drinks for you.',
       'get_low_stock_drinks': 'I will find drinks that are low in stock.',
-      'show_cart': 'I will show you your current cart.',
+      'cart_view': 'I will show you your current cart.',
       'clear_cart': 'I will clear your cart for you.'
     };
 
@@ -2380,7 +2420,7 @@ Remember: Create the perfect illusion of instant response while maintaining natu
     setIsProcessingFunction(true);
     
     // For cart operations, also update the cart display optimistically
-    if (['add_drink_to_cart', 'remove_drink_from_cart', 'clear_cart'].includes(functionName)) {
+    if (["add_drink_to_cart", "remove_drink_from_cart", "clear_cart"].includes(functionName)) {
       console.log('🛒 Cart operation detected, will update display after completion');
     }
     
@@ -2453,8 +2493,8 @@ Remember: Create the perfect illusion of instant response while maintaining natu
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          tool: 'show_cart',
-          parameters: {} // Use 'parameters' instead of 'tool_input'
+          tool: 'cart_view',
+          parameters: { clientId: 'default' } // Add consistent client ID
         })
       });
       

@@ -1,6 +1,7 @@
 import db from '../../../db/index';
 import { orders, drinks } from '../../../db/schema';
 import { desc, eq } from 'drizzle-orm';
+import { simpleInventoryService } from '../../../lib/simple-inventory-service';
 
 export async function GET() {
   try {
@@ -89,40 +90,86 @@ export async function POST(request: Request) {
       });
     }
 
-    // Calculate total in cents
-    const totalInCents = Math.round(orderData.total * 100);
+    // Calculate totals
+    let subtotal = 0;
+    for (const item of orderData.items) {
+      subtotal += (item.price || 0) * (item.quantity || 1);
+    }
+    
+    const taxRate = 0.0825; // 8.25% tax rate
+    const taxAmount = subtotal * taxRate;
+    const total = subtotal + taxAmount;
+
+    // Convert to cents for database
+    const subtotalInCents = Math.round(subtotal * 100);
+    const taxInCents = Math.round(taxAmount * 100);
+    const totalInCents = Math.round(total * 100);
 
     // Create the order
     const [newOrder] = await db.insert(orders).values({
       items: JSON.stringify(orderData.items),
+      subtotal: subtotalInCents,
+      tax_amount: taxInCents,
       total: totalInCents,
+      payment_method: orderData.payment_method || 'Credit Card',
+      payment_status: 'completed',
       status: 'completed'
     }).returning();
 
-    // Update inventory for each item
-    for (const item of orderData.items) {
-      // Find the drink by name (since UI sends drink names)
-      const [drink] = await db.select().from(drinks).where(eq(drinks.name, item.name)).limit(1);
+    // Update inventory using simple inventory service
+    try {
+      console.log(`📦 Processing inventory updates for order ${newOrder.id}...`);
       
-      if (drink) {
-        // Decrease inventory
-        await db.update(drinks)
-          .set({ inventory: Math.max(0, drink.inventory - item.quantity) })
-          .where(eq(drinks.id, drink.id));
+      // Map order items to the format expected by simpleInventoryService
+      const inventoryItems = [];
+      
+      for (const item of orderData.items) {
+        // Find the drink ID by name
+        const [drink] = await db.select()
+          .from(drinks)
+          .where(eq(drinks.name, item.name))
+          .limit(1);
+          
+        if (drink) {
+          inventoryItems.push({
+            drinkId: drink.id,
+            quantity: item.quantity || 1,
+            name: item.name
+          });
+        } else {
+          console.warn(`⚠️  Drink not found: ${item.name}`);
+        }
       }
+      
+      const inventoryResult = await simpleInventoryService.updateOrderInventory(
+        newOrder.id,
+        inventoryItems
+      );
+      
+      if (inventoryResult.success) {
+        console.log(`✅ Inventory updated successfully for ${inventoryResult.updates.length} items`);
+      } else {
+        console.error('❌ Inventory update failed:', inventoryResult.errors);
+      }
+    } catch (inventoryError) {
+      console.error('❌ Inventory update failed:', inventoryError);
+      // Log error but don't fail the order since it's already created
     }
 
     return new Response(JSON.stringify({ 
       success: true, 
       orderId: newOrder.id,
-      message: 'Order completed successfully'
+      message: 'Order completed successfully',
+      total: total,
+      tax: taxAmount,
+      subtotal: subtotal
     }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Failed to process order:', error);
-    return new Response(JSON.stringify({ error: 'Failed to process order' }), {
+    return new Response(JSON.stringify({ error: 'Failed to process order', details: error?.message || 'Unknown error' }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' },
     });
