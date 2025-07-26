@@ -3,9 +3,27 @@ import { NextRequest } from 'next/server';
 
 export async function GET() {
   try {
-    const config = await invokeMcpTool('get_tts_config');
+    // Try to get MCP config with a timeout to prevent hanging
+    let mcpConfig = {};
+    try {
+      const configPromise = invokeMcpTool('get_tts_config');
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('MCP timeout')), 2000)
+      );
+      mcpConfig = await Promise.race([configPromise, timeoutPromise]);
+    } catch (mcpError) {
+      console.warn('MCP config failed, using defaults:', mcpError.message);
+      // Use default config if MCP fails
+      mcpConfig = {
+        tts_provider: 'openai',
+        tts_voice: 'alloy',
+        rate: 1.0,
+        temperature: 0.6
+      };
+    }
+
     const fullConfig = {
-      ...config,
+      ...mcpConfig,
       openaiKey: process.env.OPENAI_API_KEY || null,
       elevenlabsKey: process.env.ELEVENLABS_API_KEY || null,
       deepgramKey: process.env.DEEPGRAM_API_KEY || null,
