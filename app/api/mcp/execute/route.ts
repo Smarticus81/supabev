@@ -1,103 +1,135 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { voiceAgentService } from '../../../../lib/voice-agent-service';
+import { NextResponse } from 'next/server';
+import { invoke } from '../../../lib/tools';
 
-export async function POST(req: NextRequest) {
+// Simple in-memory cache to reduce database calls
+let lastCartData: any = null;
+let lastCartCheck = 0;
+const CACHE_DURATION = 1000; // Cache for 1 second
+
+export async function GET() {
+  console.log('getCart called with clientId type:', typeof 'default');
+  
+  // Check if we can use cached data
+  const now = Date.now();
+  if (lastCartData && (now - lastCartCheck) < CACHE_DURATION) {
+    return NextResponse.json(lastCartData);
+  }
+
   try {
-    const body = await req.json();
-    const { tool, tool_input } = body;
-
-    if (!tool) {
-      return NextResponse.json({ error: 'Tool name is required' }, { status: 400 });
-    }
-
-    console.log(`🔧 Executing tool: ${tool} with input:`, tool_input);
-
-    let result;
-
-    // Route function calls to appropriate service methods
-    switch (tool) {
-      // 🍸 DRINK & CART MANAGEMENT
-      case 'add_drink_to_cart':
-        result = await voiceAgentService.addDrinkToCart(
-          tool_input.drink_name,
-          tool_input.quantity || 1
-        );
-        break;
-
-      case 'remove_drink_from_cart':
-        result = await voiceAgentService.removeDrinkFromCart(
-          tool_input.drink_name,
-          tool_input.quantity || 1
-        );
-        break;
-
-      case 'cart_view':
-        result = await voiceAgentService.showCart();
-        break;
-
-      case 'clear_cart':
-        result = await voiceAgentService.clearCart();
-        break;
-
-      case 'process_order':
-        result = await voiceAgentService.processOrder();
-        break;
-
-      // 🔍 SEARCH & INVENTORY
-      case 'search_drinks':
-        result = await voiceAgentService.searchDrinks(tool_input.query);
-        break;
-
-      case 'get_inventory_status':
-        result = await voiceAgentService.getInventoryStatus(tool_input.drink_name);
-        break;
-
-      // 📊 ANALYTICS & REPORTING
-      case 'get_order_analytics':
-        result = await voiceAgentService.getOrderAnalytics(tool_input.date_range);
-        break;
-
-      // 🎉 EVENT MANAGEMENT
-      case 'list_event_packages':
-        result = await voiceAgentService.listEventPackages();
-        break;
-
-      case 'book_event':
-        result = await voiceAgentService.bookEvent(
-          tool_input.package,
-          tool_input.guest_count,
-          tool_input.event_date,
-          tool_input.customer_name,
-          tool_input.customer_email,
-          tool_input.customer_phone
-        );
-        break;
-
-      // Handle other functions that might still use MCP
-      default:
-        // For backwards compatibility, try to use the old MCP client if available
+    // Get the cart data from the same system as MCP server
+    const result = await invoke('cart_view', { clientId: 'default' });
+    
+    if (result.cart && result.cart.length > 0) {
+      // Convert the MCP cart format to UI cart format
+      const uiCartItems = [];
+      let total = 0;
+      
+      for (const item of result.cart) {
+        // We need to get the drink price from the database
+        const db = (await import('../../../db/index')).default;
+        const { drinks } = await import('../../../db/schema');
+        const { eq, sql } = await import('drizzle-orm');
+        
         try {
-          const { mcpClient } = await import('../../../../server/mcp-client');
-          mcpClient.getMcpProcess();
-          result = await mcpClient.invokeMcpTool(tool, tool_input);
-        } catch (mcpError) {
-          console.warn(`Tool ${tool} not implemented in voice agent service and MCP unavailable`);
-          result = {
-            success: false,
-            message: `Function ${tool} is not currently implemented`
-          };
+          // Get drink price using consolidated inventory approach
+          const drinkResult = await db.execute(
+            sql`
+              SELECT 
+                MIN(id) as id,
+                name,
+                MIN(price) as price
+              FROM drinks 
+              WHERE LOWER(name) = LOWER(${item.drink_name})
+              AND is_active = true
+              GROUP BY name
+              LIMIT 1
+            `
+          );
+          
+          if (drinkResult.rows.length > 0) {
+            const drink = drinkResult.rows[0] as { id: number; name: string; price: number };
+            const itemTotal = (drink.price * item.quantity) / 100;
+            
+            uiCartItems.push({
+              id: drink.id.toString(),
+              name: item.drink_name,
+              price: drink.price / 100,
+              quantity: item.quantity
+            });
+            
+            total += itemTotal;
+          } else {
+            // Add item without price as fallback - using a default price of $5.00
+            uiCartItems.push({
+              id: item.drink_name,
+              name: item.drink_name,
+              price: 5.00,
+              quantity: item.quantity
+            });
+            total += 5.00 * item.quantity;
+          }
+        } catch (error) {
+          console.error('Error getting drink price for', item.drink_name, error);
+          // Add item without price as fallback - using a default price of $5.00
+          uiCartItems.push({
+            id: item.drink_name,
+            name: item.drink_name,
+            price: 5.00,
+            quantity: item.quantity
+          });
+          total += 5.00 * item.quantity;
         }
-        break;
+      }
+      
+      const cartData = {
+        success: true,
+        items: uiCartItems,
+        total: total
+      };
+
+      // Cache the result
+      lastCartData = cartData;
+      lastCartCheck = now;
+      
+      return NextResponse.json(cartData);
+    } else {
+      const emptyCartData = {
+        success: true,
+        items: [],
+        total: 0
+      };
+
+      // Cache the empty result
+      lastCartData = emptyCartData;
+      lastCartCheck = now;
+      
+      return NextResponse.json(emptyCartData);
     }
+  } catch (error) {
+    console.error('Error getting voice cart:', error);
+    const errorData = { 
+      success: false, 
+      items: [], 
+      total: 0 
+    };
 
-    console.log(`✅ Tool ${tool} executed with result:`, result);
+    // Don't cache error responses
+    return NextResponse.json(errorData);
+  }
+}
 
-    return NextResponse.json({ result });
-  } catch (error: any) {
-    console.error('❌ Error executing tool:', error);
-    return NextResponse.json({ 
-      error: error.message || 'An unexpected error occurred',
-      success: false 
-    }, { status: 500 });
+// Endpoint to clear the voice cart (when UI completes an order)
+export async function DELETE() {
+  try {
+    await invoke('cart_clear', { clientId: 'default' });
+    
+    // Clear cache when cart is cleared
+    lastCartData = null;
+    lastCartCheck = 0;
+    
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error('Error clearing voice cart:', error);
+    return NextResponse.json({ success: false });
   }
 }

@@ -1,11 +1,11 @@
 import db from '../../../db/index';
 import { orders, drinks } from '../../../db/schema';
 import { desc, eq } from 'drizzle-orm';
-import { simpleInventoryService } from '../../../lib/simple-inventory-service';
+import { inventoryService } from '../../../lib/inventory-service';
 
 export async function GET() {
   try {
-    // Get orders from Neon database with all new fields
+    // Get orders from database with all new fields
     const allOrders = await db.select({
       id: orders.id,
       customer_id: orders.customer_id,
@@ -96,21 +96,15 @@ export async function POST(request: Request) {
       subtotal += (item.price || 0) * (item.quantity || 1);
     }
     
-    const taxRate = 0.0825; // 8.25% tax rate
-    const taxAmount = subtotal * taxRate;
-    const total = subtotal + taxAmount;
-
-    // Convert to cents for database
-    const subtotalInCents = Math.round(subtotal * 100);
-    const taxInCents = Math.round(taxAmount * 100);
-    const totalInCents = Math.round(total * 100);
+    const tax = subtotal * 0.08; // Example 8% tax
+    const total = subtotal + tax;
 
     // Create the order
     const [newOrder] = await db.insert(orders).values({
       items: JSON.stringify(orderData.items),
-      subtotal: subtotalInCents,
-      tax_amount: taxInCents,
-      total: totalInCents,
+      subtotal,
+      tax_amount: tax,
+      total: total,
       payment_method: orderData.payment_method || 'Credit Card',
       payment_status: 'completed',
       status: 'completed'
@@ -120,7 +114,7 @@ export async function POST(request: Request) {
     try {
       console.log(`📦 Processing inventory updates for order ${newOrder.id}...`);
       
-      // Map order items to the format expected by simpleInventoryService
+      // Map order items to the format expected by inventoryService
       const inventoryItems = [];
       
       for (const item of orderData.items) {
@@ -141,13 +135,13 @@ export async function POST(request: Request) {
         }
       }
       
-      const inventoryResult = await simpleInventoryService.updateOrderInventory(
+      const inventoryResult = await inventoryService.processOrderPours(
         newOrder.id,
         inventoryItems
       );
       
       if (inventoryResult.success) {
-        console.log(`✅ Inventory updated successfully for ${inventoryResult.updates.length} items`);
+        console.log(`✅ Inventory updated successfully for ${inventoryItems.length} items`);
       } else {
         console.error('❌ Inventory update failed:', inventoryResult.errors);
       }

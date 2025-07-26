@@ -24,7 +24,8 @@ import {
   Eye,
   Printer,
   Download,
-  RefreshCw
+  RefreshCw,
+  LogOut
 } from "lucide-react"
 
 export default function TransactionsView() {
@@ -206,100 +207,40 @@ export default function TransactionsView() {
 
   return (
     <div className="h-full flex flex-col">
-      {/* Header */}
+      {/* Minimal Header */}
       <div className="flex items-center justify-between mb-6">
-        <div>
-          <h2 className="text-2xl font-semibold text-gray-900">Transaction History</h2>
-          <p className="text-gray-600">View and manage your sales transactions</p>
-          <p className="text-xs text-gray-500 mt-1">Last updated: {lastUpdated.toLocaleTimeString()}</p>
-        </div>
-        <div className="flex items-center gap-4">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-            <Input
-              type="search"
-              placeholder="Search transactions..."
-              className="pl-10 w-64"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-          </div>
-          <Button className="bg-blue-600 hover:bg-blue-700">
-            <Download className="h-4 w-4 mr-2" />
-            Export Data
+        <div className="flex items-center space-x-4">
+          <h1 className="text-2xl font-bold text-gray-800">Transactions</h1>
+          <Button
+            onClick={fetchTransactions}
+            variant="outline"
+            size="sm"
+            className="h-9 w-9 p-0 border-gray-200 hover:bg-gray-50 transition-all duration-200"
+          >
+            <RefreshCw className="h-4 w-4" />
           </Button>
         </div>
+        <Button
+          onClick={() => {
+            localStorage.removeItem('beverage_pos_auth')
+            window.location.href = '/landing'
+          }}
+          variant="outline"
+          size="sm"
+          className="flex items-center space-x-2 border-red-200 text-red-600 hover:bg-red-50 transition-all duration-200"
+        >
+          <LogOut className="h-4 w-4" />
+          <span>Logout</span>
+        </Button>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center">
-              <DollarSign className="h-8 w-8 text-green-600" />
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">Total Revenue</p>
-                <p className="text-2xl font-bold text-gray-900">{formatCurrency(stats.totalRevenue)}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center">
-              <ShoppingCart className="h-8 w-8 text-blue-600" />
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">Total Orders</p>
-                <p className="text-2xl font-bold text-gray-900">{stats.totalOrders}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center">
-              <TrendingUp className="h-8 w-8 text-purple-600" />
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">Avg Order</p>
-                <p className="text-2xl font-bold text-gray-900">{formatCurrency(stats.averageOrder)}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center">
-              <Calendar className="h-8 w-8 text-orange-600" />
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">Today's Sales</p>
-                <p className="text-2xl font-bold text-gray-900">
-                  {formatCurrency(
-                    transactions
-                      .filter(t => new Date(t.created_at).toDateString() === new Date().toDateString())
-                      .reduce((sum, t) => sum + (t.total || 0), 0)
-                  )}
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Time Filters */}
-      <div className="flex items-center gap-4 mb-6">
+      {/* Simple Time Filters */}
+      <div className="mb-6">
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList className="bg-gray-100">
             {timeFilters.map((filter) => (
               <TabsTrigger key={filter} value={filter} className="px-4 capitalize">
                 {filter}
-                <Badge variant="secondary" className="ml-2">
-                  {filter === "all"
-                    ? transactions.length
-                    : filteredTransactions.length}
-                </Badge>
               </TabsTrigger>
             ))}
           </TabsList>
@@ -308,126 +249,56 @@ export default function TransactionsView() {
 
       {/* Transactions Table */}
       <Card className="flex-1">
-        <CardHeader>
-          <CardTitle className="flex items-center justify-between">
-            <span>Transactions ({filteredTransactions.length})</span>
-            <Button variant="ghost" onClick={fetchTransactions}>
-              <RefreshCw className="h-4 w-4 mr-2" />
-              Refresh
-            </Button>
-          </CardTitle>
-        </CardHeader>
         <CardContent className="p-0">
           <ScrollArea className="h-[calc(100vh-400px)]">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="cursor-pointer" onClick={() => handleSort("id")}>
-                    Order ID {sortBy === "id" && (sortDirection === "asc" ? "↑" : "↓")}
-                  </TableHead>
-                  <TableHead className="cursor-pointer" onClick={() => handleSort("customer")}>
-                    Customer {sortBy === "customer" && (sortDirection === "asc" ? "↑" : "↓")}
-                  </TableHead>
-                  <TableHead className="cursor-pointer" onClick={() => handleSort("items")}>
-                    Items {sortBy === "items" && (sortDirection === "asc" ? "↑" : "↓")}
-                  </TableHead>
-                  <TableHead className="text-right">Subtotal</TableHead>
-                  <TableHead className="text-right">Tax</TableHead>
-                  <TableHead className="cursor-pointer text-right" onClick={() => handleSort("total")}>
-                    Total {sortBy === "total" && (sortDirection === "asc" ? "↑" : "↓")}
-                  </TableHead>
+                  <TableHead>Order ID</TableHead>
+                  <TableHead>Customer</TableHead>
+                  <TableHead>Items</TableHead>
+                  <TableHead className="text-right">Total</TableHead>
                   <TableHead>Payment</TableHead>
-                  <TableHead>Server</TableHead>
-                  <TableHead className="cursor-pointer" onClick={() => handleSort("date")}>
-                    Date {sortBy === "date" && (sortDirection === "asc" ? "↑" : "↓")}
-                  </TableHead>
-                  <TableHead>Actions</TableHead>
+                  <TableHead>Date</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredTransactions.map((transaction) => (
                   <TableRow key={transaction.id}>
-                    <TableCell className="font-medium">
-                      {transaction.id}
-                    </TableCell>
+                    <TableCell className="font-medium">{transaction.id}</TableCell>
                     <TableCell>
                       {transaction.customerName || "Walk-in Customer"}
                     </TableCell>
                     <TableCell>
-                      <div className="space-y-1">
-                        <div className="text-sm font-medium">
-                          {transaction.rawItems?.length || 0} items
-                        </div>
-                        {transaction.rawItems && transaction.rawItems.length > 0 && (
-                          <div className="text-xs text-gray-500 truncate max-w-[200px]">
-                            {transaction.rawItems.map((item: any) => item.name).join(", ")}
-                          </div>
-                        )}
+                      <div className="text-sm font-medium">
+                        {(transaction.items?.length || transaction.rawItems?.length || 0)} items
                       </div>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {formatCurrency(transaction.subtotal || 0)}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {formatCurrency(transaction.tax || 0)}
+                      {((transaction.items && transaction.items.length) || (transaction.rawItems && transaction.rawItems.length)) ? (
+                        <div className="text-xs text-gray-500 whitespace-nowrap overflow-hidden text-ellipsis max-w-[200px]">
+                          {(transaction.items || transaction.rawItems)
+                            .map((item: any) => {
+                              if (typeof item === 'string') {
+                                return item
+                              }
+                              const name = item.name || item.drink_name || item.item_name || 'Item'
+                              const qty = item.quantity || item.qty || 1
+                              return `${name} x${qty}`
+                            })
+                            .join(', ')}
+                        </div>
+                      ) : null}
                     </TableCell>
                     <TableCell className="text-right font-semibold">
                       {formatCurrency(transaction.total || 0)}
                     </TableCell>
                     <TableCell>
-                      <div className="space-y-1">
-                        <Badge variant="outline" className={
-                          transaction.paymentStatus === 'completed' ? 'bg-green-50 text-green-700' :
-                          transaction.paymentStatus === 'pending' ? 'bg-yellow-50 text-yellow-700' :
-                          'bg-red-50 text-red-700'
-                        }>
-                          {transaction.paymentMethod || 'Cash'}
-                        </Badge>
-                        {transaction.paymentStatus && (
-                          <div className="text-xs text-gray-500">
-                            {transaction.paymentStatus}
-                          </div>
-                        )}
-                      </div>
+                      <Badge variant="outline">
+                        {transaction.paymentMethod || 'Cash'}
+                      </Badge>
                     </TableCell>
                     <TableCell>
                       <div className="text-sm">
-                        {transaction.server || 'Bev AI'}
-                      </div>
-                      {transaction.tableNumber && (
-                        <div className="text-xs text-gray-500">
-                          Table {transaction.tableNumber}
-                        </div>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <div className="space-y-1">
-                        <div className="text-sm font-medium">
-                          {formatShortDate(transaction.created_at || transaction.timestamp)}
-                        </div>
-                        <div className="text-xs text-gray-500">
-                          {formatTime(transaction.created_at || transaction.timestamp)}
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <Button 
-                          size="icon" 
-                          variant="ghost" 
-                          title="View Details"
-                          onClick={() => viewTransactionDetails(transaction)}
-                        >
-                          <Eye className="h-4 w-4" />
-                        </Button>
-                        <Button 
-                          size="icon" 
-                          variant="ghost" 
-                          title="Print Receipt"
-                          onClick={() => printReceipt(transaction)}
-                        >
-                          <Printer className="h-4 w-4" />
-                        </Button>
+                        {formatShortDate(transaction.created_at || transaction.timestamp)}
                       </div>
                     </TableCell>
                   </TableRow>

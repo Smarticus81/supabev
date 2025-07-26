@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { simpleInventoryService } from '../../../../lib/simple-inventory-service';
+import { inventoryService } from '../../../../lib/inventory-service';
 import db from '../../../../db/index';
 import { drinks } from '../../../../db/schema';
 import { eq } from 'drizzle-orm';
@@ -10,7 +10,7 @@ export async function GET(request: NextRequest) {
     const drinkId = searchParams.get('drinkId');
 
     if (drinkId) {
-      const result = await simpleInventoryService.getDrinkInventory(parseInt(drinkId));
+      const result = await inventoryService.getRealTimeInventoryStatus(parseInt(drinkId));
       return NextResponse.json(result);
     }
 
@@ -51,29 +51,33 @@ export async function POST(request: NextRequest) {
 
     switch (action) {
       case 'check_availability':
-        const availability = await simpleInventoryService.checkInventoryAvailability(params.items);
+        const availability = await inventoryService.checkInventoryAvailability(params.items);
         return NextResponse.json({
           success: true,
           result: availability
         });
 
       case 'update_inventory':
-        const updateResult = await simpleInventoryService.updateDrinkInventory(
-          params.drinkId,
-          params.quantityToDeduct
-        );
-        return NextResponse.json(updateResult);
+        // TODO: Implement with inventoryService
+        return NextResponse.json({
+          success: false,
+          error: 'Update inventory not implemented yet'
+        });
 
       case 'process_order_inventory':
-        const orderResult = await simpleInventoryService.updateOrderInventory(
+        // Use processOrderPours method
+        const orderResult = await inventoryService.processOrderPours(
           params.orderId,
           params.items
         );
         return NextResponse.json(orderResult);
 
       case 'restore_inventory':
-        const restoreResult = await simpleInventoryService.restoreInventory(params.items);
-        return NextResponse.json(restoreResult);
+        // TODO: Implement inventory restoration
+        return NextResponse.json({
+          success: false,
+          error: 'Restore inventory not implemented yet'
+        });
 
       default:
         return NextResponse.json(

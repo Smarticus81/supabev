@@ -1,145 +1,90 @@
-"use client"
+'use client'
 
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { ScrollArea } from "@/components/ui/scroll-area"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
-import { 
-  Search, 
-  Plus, 
-  Edit, 
-  Trash2, 
-  Users, 
-  UserCheck, 
-  Clock,
-  RefreshCw,
-  Mail,
-  Phone
-} from "lucide-react"
+import { RefreshCw, TrendingUp, DollarSign, Package, Users, Clock, BarChart3, PieChart, Calendar, LogOut } from 'lucide-react'
 
-interface StaffMember {
-  id: number
-  name: string
-  first_name: string
-  last_name: string
-  email: string
-  phone?: string
-  role: string
-  permissions: any
-  hourly_rate?: number
-  hire_date?: string
-  is_active: boolean
-  has_pin: boolean
-  created_at: string
-  updated_at: string
+interface Analytics {
+  revenue: {
+    today: number
+    week: number
+    month: number
+    growth: number
+  }
+  orders: {
+    today: number
+    week: number
+    month: number
+    avgOrderValue: number
+  }
+  inventory: {
+    totalItems: number
+    lowStock: number
+    outOfStock: number
+    topSelling: Array<{name: string, sold: number}>
+  }
+  performance: {
+    peakHours: Array<{hour: string, orders: number}>
+    popularCategories: Array<{category: string, percentage: number}>
+    customerFlow: Array<{day: string, customers: number}>
+  }
 }
 
-export default function StaffView() {
-  const [staff, setStaff] = useState<StaffMember[]>([])
-  const [filteredStaff, setFilteredStaff] = useState<StaffMember[]>([])
-  const [searchQuery, setSearchQuery] = useState("")
+export function StaffView() {
+  const [analytics, setAnalytics] = useState<Analytics | null>(null)
   const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [activeTab, setActiveTab] = useState("all")
-  const [sortBy, setSortBy] = useState("name")
-  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc")
 
-  const fetchStaff = async () => {
+  const fetchAnalytics = async () => {
     setIsLoading(true)
-    setError(null)
     try {
-      const response = await fetch('/api/staff')
+      const response = await fetch('/api/analytics?range=30d')
       if (!response.ok) {
-        throw new Error('Failed to fetch staff')
+        throw new Error('Failed to fetch analytics')
       }
       const data = await response.json()
-      setStaff(data)
-    } catch (error: any) {
-      console.error('Error fetching staff:', error)
-      setError(error.message)
+      setAnalytics(data)
+    } catch (error) {
+      console.error('Failed to fetch analytics:', error)
+      // Fallback to mock data on error
+      setAnalytics({
+        revenue: {
+          today: 0,
+          week: 0,
+          month: 0,
+          growth: 0
+        },
+        orders: {
+          today: 0,
+          week: 0,
+          month: 0,
+          avgOrderValue: 0
+        },
+        inventory: {
+          totalItems: 0,
+          lowStock: 0,
+          outOfStock: 0,
+          topSelling: []
+        },
+        performance: {
+          peakHours: [],
+          popularCategories: [],
+          customerFlow: []
+        }
+      })
     } finally {
       setIsLoading(false)
     }
   }
 
-  useEffect(() => {
-    fetchStaff()
-  }, [])
-
-  // Filter and search logic
-  useEffect(() => {
-    let result = [...staff]
-
-    // Filter by role
-    if (activeTab !== "all") {
-      result = result.filter(member => member.role === activeTab)
-    }
-
-    // Search filter
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase()
-      result = result.filter(member =>
-        member.name.toLowerCase().includes(query) ||
-        member.email.toLowerCase().includes(query) ||
-        member.role.toLowerCase().includes(query)
-      )
-    }
-
-    // Sort
-    result.sort((a, b) => {
-      let aValue = a[sortBy as keyof StaffMember]
-      let bValue = b[sortBy as keyof StaffMember]
-      
-      if (typeof aValue === 'string') aValue = aValue.toLowerCase()
-      if (typeof bValue === 'string') bValue = bValue.toLowerCase()
-      
-      if (aValue < bValue) return sortDirection === "asc" ? -1 : 1
-      if (aValue > bValue) return sortDirection === "asc" ? 1 : -1
-      return 0
-    })
-
-    setFilteredStaff(result)
-  }, [staff, searchQuery, activeTab, sortBy, sortDirection])
-
-  const handleSort = (column: string) => {
-    if (sortBy === column) {
-      setSortDirection(prev => prev === "asc" ? "desc" : "asc")
-    } else {
-      setSortBy(column)
-      setSortDirection("asc")
-    }
+  const handleLogout = () => {
+    localStorage.removeItem('beverage_pos_auth')
+    window.location.href = '/landing'
   }
 
-  const roles = useMemo(() => {
-    const allRoles = ["all", ...Array.from(new Set(staff.map(s => s.role)))]
-    return allRoles
-  }, [staff])
-
-  const stats = useMemo(() => {
-    const totalStaff = staff.filter(s => s.is_active).length
-    const roleStats = staff.reduce((acc, member) => {
-      if (member.is_active) {
-        acc[member.role] = (acc[member.role] || 0) + 1
-      }
-      return acc
-    }, {} as Record<string, number>)
-
-    return {
-      totalStaff,
-      roleStats
-    }
-  }, [staff])
+  useEffect(() => {
+    fetchAnalytics()
+  }, [])
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', {
@@ -148,206 +93,256 @@ export default function StaffView() {
     }).format(amount)
   }
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString()
-  }
-
-  const getRoleBadgeColor = (role: string) => {
-    switch (role) {
-      case 'admin': return 'bg-red-50 text-red-700'
-      case 'manager': return 'bg-purple-50 text-purple-700'
-      case 'bartender': return 'bg-blue-50 text-blue-700'
-      case 'server': return 'bg-green-50 text-green-700'
-      default: return 'bg-gray-50 text-gray-700'
-    }
-  }
-
   if (isLoading) {
     return (
       <div className="h-full flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="text-gray-600 mt-2">Loading staff...</p>
-        </div>
-      </div>
-    )
-  }
-
-  if (error) {
-    return (
-      <div className="h-full flex items-center justify-center">
-        <div className="text-center">
-          <p className="text-red-600 mb-4">Error loading staff: {error}</p>
-          <Button onClick={fetchStaff}>Try Again</Button>
+        <div className="flex flex-col items-center space-y-4">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-500"></div>
+          <p className="text-gray-500">Loading analytics...</p>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="h-full flex flex-col space-y-6">
+    <div className="h-full overflow-hidden">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Staff Management</h1>
-          <p className="text-gray-600">Manage your venue staff and permissions</p>
-        </div>
-        <div className="flex items-center gap-4">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-            <Input
-              placeholder="Search staff..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10 w-64"
-            />
-          </div>
-          <Button className="bg-blue-600 hover:bg-blue-700">
-            <Plus className="h-4 w-4 mr-2" />
-            Add Staff
+      <div className="flex items-center justify-between mb-6 px-1">
+        <div className="flex items-center space-x-4">
+          <h1 className="text-2xl font-bold text-gray-800">Dashboard</h1>
+          <Button
+            onClick={fetchAnalytics}
+            variant="outline"
+            size="sm"
+            className="h-9 w-9 p-0 border-gray-200 hover:bg-gray-50 transition-all duration-200"
+          >
+            <RefreshCw className="h-4 w-4" />
           </Button>
         </div>
+        <Button
+          onClick={handleLogout}
+          variant="outline"
+          size="sm"
+          className="flex items-center space-x-2 border-red-200 text-red-600 hover:bg-red-50 transition-all duration-200"
+        >
+          <LogOut className="h-4 w-4" />
+          <span>Logout</span>
+        </Button>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center">
-              <Users className="h-8 w-8 text-blue-600" />
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">Total Staff</p>
-                <p className="text-2xl font-bold text-gray-900">{stats.totalStaff}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+      {/* Content */}
+      <div className="h-full overflow-y-auto scrollbar-hide pb-24">
+        <div className="space-y-6">
+          {/* Revenue Overview */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <Card className="border-0 shadow-lg bg-gradient-to-br from-green-50 to-green-100">
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-green-700">Today</p>
+                    <p className="text-2xl font-bold text-green-800">{formatCurrency(analytics?.revenue.today || 0)}</p>
+                  </div>
+                  <DollarSign className="h-8 w-8 text-green-600" />
+                </div>
+              </CardContent>
+            </Card>
 
-        {Object.entries(stats.roleStats).slice(0, 3).map(([role, count]) => (
-          <Card key={role}>
-            <CardContent className="p-4">
-              <div className="flex items-center">
-                <UserCheck className="h-8 w-8 text-green-600" />
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-600 capitalize">{role}s</p>
-                  <p className="text-2xl font-bold text-gray-900">{count}</p>
+            <Card className="border-0 shadow-lg bg-gradient-to-br from-blue-50 to-blue-100">
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-blue-700">This Week</p>
+                    <p className="text-2xl font-bold text-blue-800">{formatCurrency(analytics?.revenue.week || 0)}</p>
+                  </div>
+                  <TrendingUp className="h-8 w-8 text-blue-600" />
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="border-0 shadow-lg bg-gradient-to-br from-purple-50 to-purple-100">
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-purple-700">Orders Today</p>
+                    <p className="text-2xl font-bold text-purple-800">{analytics?.orders.today}</p>
+                  </div>
+                  <BarChart3 className="h-8 w-8 text-purple-600" />
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="border-0 shadow-lg bg-gradient-to-br from-orange-50 to-orange-100">
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-orange-700">Avg Order</p>
+                    <p className="text-2xl font-bold text-orange-800">{formatCurrency(analytics?.orders.avgOrderValue || 0)}</p>
+                  </div>
+                  <Users className="h-8 w-8 text-orange-600" />
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Charts Row */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Peak Hours Chart */}
+            <Card className="border-0 shadow-lg">
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center space-x-2 text-lg">
+                  <Clock className="h-5 w-5 text-gray-600" />
+                  <span>Peak Hours</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  {analytics?.performance.peakHours.map((hour, index) => (
+                    <div key={hour.hour} className="flex items-center space-x-3">
+                      <span className="text-sm font-medium text-gray-600 w-12">{hour.hour}</span>
+                      <div className="flex-1 bg-gray-100 rounded-full h-3 relative overflow-hidden">
+                        <div 
+                          className="h-full bg-gradient-to-r from-orange-400 to-orange-600 rounded-full transition-all duration-1000 ease-out"
+                          style={{ width: `${(hour.orders / 35) * 100}%` }}
+                        />
+                      </div>
+                      <span className="text-sm font-bold text-gray-800 w-8 text-right">{hour.orders}</span>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Customer Flow */}
+            <Card className="border-0 shadow-lg">
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center space-x-2 text-lg">
+                  <Calendar className="h-5 w-5 text-gray-600" />
+                  <span>Weekly Flow</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-end justify-between h-32 space-x-2">
+                  {analytics?.performance.customerFlow.map((day, index) => (
+                    <div key={day.day} className="flex flex-col items-center flex-1">
+                      <div 
+                        className="w-full bg-gradient-to-t from-blue-500 to-blue-400 rounded-t-lg transition-all duration-1000 ease-out"
+                        style={{ height: `${(day.customers / 150) * 100}%` }}
+                      />
+                      <span className="text-xs font-medium text-gray-600 mt-2">{day.day}</span>
+                      <span className="text-xs font-bold text-gray-800">{day.customers}</span>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Performance Insights */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Top Selling Items */}
+            <Card className="border-0 shadow-lg">
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center space-x-2 text-lg">
+                  <Package className="h-5 w-5 text-gray-600" />
+                  <span>Top Sellers</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {analytics?.inventory.topSelling.map((item, index) => (
+                    <div key={item.name} className="flex items-center justify-between">
+                      <div className="flex items-center space-x-3">
+                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-orange-400 to-orange-600 flex items-center justify-center text-white text-sm font-bold">
+                          {index + 1}
+                        </div>
+                        <span className="font-medium text-gray-800">{item.name}</span>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <div className="w-16 bg-gray-100 rounded-full h-2">
+                          <div 
+                            className="h-full bg-gradient-to-r from-orange-400 to-orange-600 rounded-full"
+                            style={{ width: `${(item.sold / 100) * 100}%` }}
+                          />
+                        </div>
+                        <span className="text-sm font-bold text-gray-800 w-8 text-right">{item.sold}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Category Distribution */}
+            <Card className="border-0 shadow-lg">
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center space-x-2 text-lg">
+                  <PieChart className="h-5 w-5 text-gray-600" />
+                  <span>Category Mix</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {analytics?.performance.popularCategories.map((category, index) => (
+                    <div key={category.category} className="flex items-center justify-between">
+                      <span className="font-medium text-gray-800">{category.category}</span>
+                      <div className="flex items-center space-x-2">
+                        <div className="w-20 bg-gray-100 rounded-full h-2">
+                          <div 
+                            className={`h-full rounded-full ${
+                              index === 0 ? 'bg-gradient-to-r from-green-400 to-green-600' :
+                              index === 1 ? 'bg-gradient-to-r from-blue-400 to-blue-600' :
+                              index === 2 ? 'bg-gradient-to-r from-purple-400 to-purple-600' :
+                              'bg-gradient-to-r from-gray-400 to-gray-600'
+                            }`}
+                            style={{ width: `${category.percentage}%` }}
+                          />
+                        </div>
+                        <span className="text-sm font-bold text-gray-800 w-10 text-right">{category.percentage}%</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Growth Metrics */}
+          <Card className="border-0 shadow-lg bg-gradient-to-br from-gray-50 to-gray-100">
+            <CardHeader>
+              <CardTitle className="text-lg">Growth Insights</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
+                <div className="text-center">
+                  <p className="text-3xl font-bold text-green-600">+{analytics?.revenue.growth}%</p>
+                  <p className="text-sm text-gray-600">Revenue Growth</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-3xl font-bold text-blue-600">{analytics?.inventory.totalItems}</p>
+                  <p className="text-sm text-gray-600">Total Items</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-3xl font-bold text-orange-600">{analytics?.inventory.lowStock}</p>
+                  <p className="text-sm text-gray-600">Low Stock</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-3xl font-bold text-red-600">{analytics?.inventory.outOfStock}</p>
+                  <p className="text-sm text-gray-600">Out of Stock</p>
                 </div>
               </div>
             </CardContent>
           </Card>
-        ))}
+        </div>
       </div>
 
-      {/* Role Filters */}
-      <div className="flex items-center gap-4">
-        <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="bg-gray-100">
-            {roles.map((role) => (
-              <TabsTrigger key={role} value={role} className="px-4 capitalize">
-                {role}
-                <Badge variant="secondary" className="ml-2">
-                  {role === "all"
-                    ? staff.filter(s => s.is_active).length
-                    : staff.filter(s => s.role === role && s.is_active).length}
-                </Badge>
-              </TabsTrigger>
-            ))}
-          </TabsList>
-        </Tabs>
+      {/* Subtle Logo */}
+      <div className="absolute bottom-4 right-4 opacity-10">
+        <svg className="w-8 h-8" viewBox="0 0 100 100" fill="currentColor">
+          <circle cx="50" cy="30" r="8" className="text-orange-500"/>
+          <path d="M35 45 Q50 35 65 45 L65 70 Q50 80 35 70 Z" className="text-orange-500"/>
+          <circle cx="50" cy="60" r="3" fill="white"/>
+        </svg>
       </div>
-
-      {/* Staff Table */}
-      <Card className="flex-1">
-        <CardHeader>
-          <CardTitle className="flex items-center justify-between">
-            <span>Staff Members ({filteredStaff.length})</span>
-            <Button variant="ghost" onClick={fetchStaff}>
-              <RefreshCw className="h-4 w-4 mr-2" />
-              Refresh
-            </Button>
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="p-0">
-          <ScrollArea className="h-[calc(100vh-400px)]">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="cursor-pointer" onClick={() => handleSort("name")}>
-                    Name {sortBy === "name" && (sortDirection === "asc" ? "↑" : "↓")}
-                  </TableHead>
-                  <TableHead className="cursor-pointer" onClick={() => handleSort("role")}>
-                    Role {sortBy === "role" && (sortDirection === "asc" ? "↑" : "↓")}
-                  </TableHead>
-                  <TableHead>Contact</TableHead>
-                  <TableHead className="text-right">Hourly Rate</TableHead>
-                  <TableHead>Hire Date</TableHead>
-                  <TableHead>Access</TableHead>
-                  <TableHead>Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredStaff.map((member) => (
-                  <TableRow key={member.id}>
-                    <TableCell className="font-medium">
-                      <div>
-                        <div className="font-semibold">{member.name}</div>
-                        <div className="text-sm text-gray-500">ID: {member.id}</div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge className={getRoleBadgeColor(member.role)}>
-                        {member.role}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <div className="space-y-1">
-                        <div className="flex items-center text-sm">
-                          <Mail className="h-3 w-3 mr-1" />
-                          {member.email}
-                        </div>
-                        {member.phone && (
-                          <div className="flex items-center text-sm text-gray-500">
-                            <Phone className="h-3 w-3 mr-1" />
-                            {member.phone}
-                          </div>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {member.hourly_rate ? formatCurrency(member.hourly_rate) : 'N/A'}
-                    </TableCell>
-                    <TableCell>
-                      {member.hire_date ? formatDate(member.hire_date) : 'N/A'}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <Badge variant={member.has_pin ? 'default' : 'outline'}>
-                          {member.has_pin ? 'PIN Set' : 'No PIN'}
-                        </Badge>
-                        <Badge variant={member.is_active ? 'default' : 'secondary'}>
-                          {member.is_active ? 'Active' : 'Inactive'}
-                        </Badge>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <Button size="sm" variant="outline">
-                          <Edit className="h-4 w-4 mr-1" />
-                          Edit
-                        </Button>
-                        <Button size="sm" variant="outline">
-                          <Clock className="h-4 w-4 mr-1" />
-                          Schedule
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </ScrollArea>
-        </CardContent>
-      </Card>
     </div>
   )
 } 

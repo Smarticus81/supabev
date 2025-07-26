@@ -72,8 +72,8 @@ class MCPClient {
             // Check for specific error types
             if (errorMsg.includes('ECONNREFUSED') || errorMsg.includes('connection refused')) {
                 this.handleConnectionError(new Error('Database connection refused'));
-            } else if (errorMsg.includes('SQLITE_BUSY') || errorMsg.includes('database is locked')) {
-                this.handleDatabaseLockError();
+            } else if (errorMsg.includes('connection terminated') || errorMsg.includes('database connection error')) {
+                this.handleDatabaseConnectionError();
             }
         });
 
@@ -107,6 +107,12 @@ class MCPClient {
 
     processResponse(responseStr) {
         try {
+            // Skip non-JSON lines (error logs, etc.)
+            if (!responseStr.startsWith('{') && !responseStr.startsWith('[')) {
+                console.log('MCP Non-JSON output:', responseStr);
+                return;
+            }
+            
             const response = JSON.parse(responseStr);
             console.log('MCP Response received:', response);
             
@@ -181,12 +187,12 @@ class MCPClient {
         }
     }
 
-    handleDatabaseLockError() {
-        console.warn('Database lock detected, retrying requests after delay');
+    handleDatabaseConnectionError() {
+        console.warn('Database connection error detected, retrying requests after delay');
         // Add delay before processing queue
         setTimeout(() => {
             this.processRequestQueue();
-        }, 2000); // Increased delay for lock resolution
+        }, 2000); // Delay for connection recovery
     }
 
     handleProcessExit(code) {

@@ -12,25 +12,18 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { 
   Calendar, 
   Plus, 
+  Edit, 
+  Trash2, 
   Users, 
-  Clock, 
   DollarSign, 
-  Package, 
-  Search,
-  Edit,
-  Trash2,
-  CheckCircle,
-  XCircle,
-  AlertCircle,
-  CalendarDays,
-  MapPin,
-  Phone,
-  Mail,
+  Clock, 
+  MapPin, 
+  Phone, 
+  Mail, 
+  Filter, 
+  Search, 
   RefreshCw,
-  Download,
-  TrendingUp,
-  Eye,
-  Printer
+  LogOut
 } from "lucide-react"
 import {
   Dialog,
@@ -379,215 +372,63 @@ export default function EventsView() {
 
   return (
     <div className="h-full flex flex-col">
-      {/* Header */}
+      {/* Minimal Header */}
       <div className="flex items-center justify-between mb-6">
-        <div>
-          <h2 className="text-2xl font-semibold text-gray-900">Event Management</h2>
-          <p className="text-gray-600">Manage event packages and bookings</p>
-          <p className="text-xs text-gray-500 mt-1">Last updated: {lastUpdated.toLocaleTimeString()}</p>
-        </div>
-        <div className="flex items-center gap-4">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-            <Input
-              type="search"
-              placeholder="Search events..."
-              className="pl-10 w-64"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-          </div>
-          <Button className="bg-blue-600 hover:bg-blue-700">
-            <Download className="h-4 w-4 mr-2" />
-            Export Data
+        <div className="flex items-center space-x-4">
+          <h1 className="text-2xl font-bold text-gray-800">Events</h1>
+          <Button
+            onClick={fetchPackages}
+            variant="outline"
+            size="sm"
+            className="h-9 w-9 p-0 border-gray-200 hover:bg-gray-50 transition-all duration-200"
+          >
+            <RefreshCw className="h-4 w-4" />
           </Button>
         </div>
+        <Button
+          onClick={() => {
+            localStorage.removeItem('beverage_pos_auth')
+            window.location.href = '/landing'
+          }}
+          variant="outline"
+          size="sm"
+          className="flex items-center space-x-2 border-red-200 text-red-600 hover:bg-red-50 transition-all duration-200"
+        >
+          <LogOut className="h-4 w-4" />
+          <span>Logout</span>
+        </Button>
       </div>
 
-      {/* Tabs */}
-      <div className="flex items-center gap-4 mb-6">
+      {/* Simple Tabs */}
+      <div className="mb-6">
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList className="bg-gray-100">
             <TabsTrigger value="packages" className="px-4">
-              Event Packages
-              <Badge variant="secondary" className="ml-2">
-                {packages.length}
-              </Badge>
+              Packages
             </TabsTrigger>
             <TabsTrigger value="bookings" className="px-4">
               Bookings
-              <Badge variant="secondary" className="ml-2">
-                {bookings.length}
-              </Badge>
             </TabsTrigger>
           </TabsList>
         </Tabs>
       </div>
-
+ 
       {/* Tab Content */}
       <Tabs value={activeTab} className="flex-1">
         {/* Event Packages Tab */}
-        <TabsContent value="packages" className="h-full space-y-6">
-          {/* Stats Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center">
-                  <Package className="h-8 w-8 text-blue-600" />
-                  <div className="ml-4">
-                    <p className="text-sm font-medium text-gray-600">Total Packages</p>
-                    <p className="text-2xl font-bold text-gray-900">{packageStats.totalPackages}</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center">
-                  <DollarSign className="h-8 w-8 text-green-600" />
-                  <div className="ml-4">
-                    <p className="text-sm font-medium text-gray-600">Avg Price/Person</p>
-                    <p className="text-2xl font-bold text-gray-900">{formatCurrency(packageStats.avgPrice)}</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center">
-                  <Users className="h-8 w-8 text-purple-600" />
-                  <div className="ml-4">
-                    <p className="text-sm font-medium text-gray-600">Total Capacity</p>
-                    <p className="text-2xl font-bold text-gray-900">{packageStats.totalCapacity}</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center">
-                  <Clock className="h-8 w-8 text-orange-600" />
-                  <div className="ml-4">
-                    <p className="text-sm font-medium text-gray-600">Avg Duration</p>
-                    <p className="text-2xl font-bold text-gray-900">{packageStats.avgDuration.toFixed(1)}h</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
+        <TabsContent value="packages" className="h-full">
           {/* Packages Table */}
           <Card className="flex-1">
-            <CardHeader>
-              <CardTitle className="flex items-center justify-between">
-                <span>Event Packages ({filteredPackages.length})</span>
-                <div className="flex gap-2">
-                  <Button variant="ghost" onClick={fetchPackages}>
-                    <RefreshCw className="h-4 w-4 mr-2" />
-                    Refresh
-                  </Button>
-                  <Dialog open={showNewPackageDialog} onOpenChange={setShowNewPackageDialog}>
-                    <DialogTrigger asChild>
-                      <Button className="bg-blue-600 hover:bg-blue-700">
-                        <Plus className="h-4 w-4 mr-2" />
-                        New Package
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent className="sm:max-w-[425px]">
-                      <DialogHeader>
-                        <DialogTitle>Create Event Package</DialogTitle>
-                        <DialogDescription>
-                          Add a new event package with pricing and details.
-                        </DialogDescription>
-                      </DialogHeader>
-                      <div className="grid gap-4 py-4">
-                        <div className="grid grid-cols-4 items-center gap-4">
-                          <Label htmlFor="name" className="text-right">Name</Label>
-                          <Input
-                            id="name"
-                            value={newPackage.name}
-                            onChange={(e) => setNewPackage({...newPackage, name: e.target.value})}
-                            className="col-span-3"
-                            placeholder="Wedding Package"
-                          />
-                        </div>
-                        <div className="grid grid-cols-4 items-center gap-4">
-                          <Label htmlFor="description" className="text-right">Description</Label>
-                          <Textarea
-                            id="description"
-                            value={newPackage.description}
-                            onChange={(e) => setNewPackage({...newPackage, description: e.target.value})}
-                            className="col-span-3"
-                            placeholder="Complete wedding package with bar service..."
-                          />
-                        </div>
-                        <div className="grid grid-cols-4 items-center gap-4">
-                          <Label htmlFor="price" className="text-right">Price ($)</Label>
-                          <Input
-                            id="price"
-                            type="number"
-                            value={newPackage.price}
-                            onChange={(e) => setNewPackage({...newPackage, price: e.target.value})}
-                            className="col-span-3"
-                            placeholder="25"
-                          />
-                        </div>
-                        <div className="grid grid-cols-4 items-center gap-4">
-                          <Label htmlFor="duration" className="text-right">Duration (hrs)</Label>
-                          <Input
-                            id="duration"
-                            type="number"
-                            value={newPackage.duration_hours}
-                            onChange={(e) => setNewPackage({...newPackage, duration_hours: e.target.value})}
-                            className="col-span-3"
-                            placeholder="4"
-                          />
-                        </div>
-                        <div className="grid grid-cols-4 items-center gap-4">
-                          <Label htmlFor="max_guests" className="text-right">Max Guests</Label>
-                          <Input
-                            id="max_guests"
-                            type="number"
-                            value={newPackage.max_guests}
-                            onChange={(e) => setNewPackage({...newPackage, max_guests: e.target.value})}
-                            className="col-span-3"
-                            placeholder="100"
-                          />
-                        </div>
-                      </div>
-                      <DialogFooter>
-                        <Button variant="outline" onClick={() => setShowNewPackageDialog(false)}>
-                          Cancel
-                        </Button>
-                        <Button onClick={createPackage}>Create Package</Button>
-                      </DialogFooter>
-                    </DialogContent>
-                  </Dialog>
-                </div>
-              </CardTitle>
-            </CardHeader>
             <CardContent className="p-0">
-              <ScrollArea className="h-[calc(100vh-500px)]">
+              <ScrollArea className="h-[calc(100vh-400px)]">
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="cursor-pointer" onClick={() => handleSort("name")}>
-                        Package Name {sortBy === "name" && (sortDirection === "asc" ? "↑" : "↓")}
-                      </TableHead>
+                      <TableHead>Package Name</TableHead>
                       <TableHead>Description</TableHead>
-                      <TableHead className="cursor-pointer text-right" onClick={() => handleSort("price")}>
-                        Price/Person {sortBy === "price" && (sortDirection === "asc" ? "↑" : "↓")}
-                      </TableHead>
-                      <TableHead className="cursor-pointer text-center" onClick={() => handleSort("duration")}>
-                        Duration {sortBy === "duration" && (sortDirection === "asc" ? "↑" : "↓")}
-                      </TableHead>
-                      <TableHead className="cursor-pointer text-center" onClick={() => handleSort("guests")}>
-                        Max Guests {sortBy === "guests" && (sortDirection === "asc" ? "↑" : "↓")}
-                      </TableHead>
-                      <TableHead className="text-center">Actions</TableHead>
+                      <TableHead className="text-right">Price</TableHead>
+                      <TableHead className="text-center">Duration</TableHead>
+                      <TableHead className="text-center">Max Guests</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -600,19 +441,6 @@ export default function EventsView() {
                         <TableCell className="text-right font-medium">{formatCurrency(pkg.price)}</TableCell>
                         <TableCell className="text-center">{pkg.duration_hours}h</TableCell>
                         <TableCell className="text-center">{pkg.max_guests}</TableCell>
-                        <TableCell className="text-center">
-                          <div className="flex justify-center gap-2">
-                            <Button variant="ghost" size="sm">
-                              <Eye className="h-4 w-4" />
-                            </Button>
-                            <Button variant="ghost" size="sm">
-                              <Edit className="h-4 w-4" />
-                            </Button>
-                            <Button variant="ghost" size="sm" className="text-red-600 hover:text-red-700">
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -621,198 +449,24 @@ export default function EventsView() {
             </CardContent>
           </Card>
         </TabsContent>
-
+ 
         {/* Event Bookings Tab */}
-        <TabsContent value="bookings" className="h-full space-y-6">
-          {/* Stats Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center">
-                  <Calendar className="h-8 w-8 text-blue-600" />
-                  <div className="ml-4">
-                    <p className="text-sm font-medium text-gray-600">Total Bookings</p>
-                    <p className="text-2xl font-bold text-gray-900">{bookingStats.totalBookings}</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center">
-                  <DollarSign className="h-8 w-8 text-green-600" />
-                  <div className="ml-4">
-                    <p className="text-sm font-medium text-gray-600">Total Revenue</p>
-                    <p className="text-2xl font-bold text-gray-900">{formatCurrency(bookingStats.totalRevenue)}</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center">
-                  <TrendingUp className="h-8 w-8 text-purple-600" />
-                  <div className="ml-4">
-                    <p className="text-sm font-medium text-gray-600">Avg Booking</p>
-                    <p className="text-2xl font-bold text-gray-900">{formatCurrency(bookingStats.avgBookingValue)}</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center">
-                  <CheckCircle className="h-8 w-8 text-orange-600" />
-                  <div className="ml-4">
-                    <p className="text-sm font-medium text-gray-600">Confirmed</p>
-                    <p className="text-2xl font-bold text-gray-900">{bookingStats.confirmedBookings}</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
+        <TabsContent value="bookings" className="h-full">
           {/* Bookings Table */}
           <Card className="flex-1">
-            <CardHeader>
-              <CardTitle className="flex items-center justify-between">
-                <span>Event Bookings ({filteredBookings.length})</span>
-                <div className="flex gap-2">
-                  <Button variant="ghost" onClick={fetchBookings}>
-                    <RefreshCw className="h-4 w-4 mr-2" />
-                    Refresh
-                  </Button>
-                  <Dialog open={showNewBookingDialog} onOpenChange={setShowNewBookingDialog}>
-                    <DialogTrigger asChild>
-                      <Button className="bg-blue-600 hover:bg-blue-700">
-                        <Plus className="h-4 w-4 mr-2" />
-                        New Booking
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent className="sm:max-w-[500px]">
-                      <DialogHeader>
-                        <DialogTitle>Create Event Booking</DialogTitle>
-                        <DialogDescription>
-                          Book a new event with customer details.
-                        </DialogDescription>
-                      </DialogHeader>
-                      <div className="grid gap-4 py-4">
-                        <div className="grid grid-cols-4 items-center gap-4">
-                          <Label htmlFor="customer_name" className="text-right">Customer</Label>
-                          <Input
-                            id="customer_name"
-                            value={newBooking.customer_name}
-                            onChange={(e) => setNewBooking({...newBooking, customer_name: e.target.value})}
-                            className="col-span-3"
-                            placeholder="John Smith"
-                          />
-                        </div>
-                        <div className="grid grid-cols-4 items-center gap-4">
-                          <Label htmlFor="package_id" className="text-right">Package</Label>
-                          <Select
-                            value={newBooking.package_id}
-                            onValueChange={(value) => setNewBooking({...newBooking, package_id: value})}
-                          >
-                            <SelectTrigger className="col-span-3">
-                              <SelectValue placeholder="Select package" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {packages.map((pkg) => (
-                                <SelectItem key={pkg.name} value={pkg.name}>
-                                  {pkg.name} - {formatCurrency(pkg.price)}/person
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        <div className="grid grid-cols-4 items-center gap-4">
-                          <Label htmlFor="event_name" className="text-right">Event Name</Label>
-                          <Input
-                            id="event_name"
-                            value={newBooking.event_name}
-                            onChange={(e) => setNewBooking({...newBooking, event_name: e.target.value})}
-                            className="col-span-3"
-                            placeholder="Anniversary Party"
-                          />
-                        </div>
-                        <div className="grid grid-cols-4 items-center gap-4">
-                          <Label htmlFor="event_date" className="text-right">Date</Label>
-                          <Input
-                            id="event_date"
-                            type="date"
-                            value={newBooking.event_date}
-                            onChange={(e) => setNewBooking({...newBooking, event_date: e.target.value})}
-                            className="col-span-3"
-                          />
-                        </div>
-                        <div className="grid grid-cols-4 items-center gap-4">
-                          <Label htmlFor="start_time" className="text-right">Start Time</Label>
-                          <Input
-                            id="start_time"
-                            type="time"
-                            value={newBooking.start_time}
-                            onChange={(e) => setNewBooking({...newBooking, start_time: e.target.value})}
-                            className="col-span-3"
-                          />
-                        </div>
-                        <div className="grid grid-cols-4 items-center gap-4">
-                          <Label htmlFor="guest_count" className="text-right">Guests</Label>
-                          <Input
-                            id="guest_count"
-                            type="number"
-                            value={newBooking.guest_count}
-                            onChange={(e) => setNewBooking({...newBooking, guest_count: e.target.value})}
-                            className="col-span-3"
-                            placeholder="50"
-                          />
-                        </div>
-                        <div className="grid grid-cols-4 items-center gap-4">
-                          <Label htmlFor="special_requests" className="text-right">Notes</Label>
-                          <Textarea
-                            id="special_requests"
-                            value={newBooking.special_requests}
-                            onChange={(e) => setNewBooking({...newBooking, special_requests: e.target.value})}
-                            className="col-span-3"
-                            placeholder="Special dietary requirements..."
-                          />
-                        </div>
-                      </div>
-                      <DialogFooter>
-                        <Button variant="outline" onClick={() => setShowNewBookingDialog(false)}>
-                          Cancel
-                        </Button>
-                        <Button onClick={createBooking}>Create Booking</Button>
-                      </DialogFooter>
-                    </DialogContent>
-                  </Dialog>
-                </div>
-              </CardTitle>
-            </CardHeader>
             <CardContent className="p-0">
               <ScrollArea className="h-[calc(100vh-500px)]">
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Booking ID</TableHead>
-                      <TableHead className="cursor-pointer" onClick={() => handleSort("customer")}>
-                        Customer {sortBy === "customer" && (sortDirection === "asc" ? "↑" : "↓")}
-                      </TableHead>
+                      <TableHead>ID</TableHead>
+                      <TableHead>Customer</TableHead>
                       <TableHead>Event Name</TableHead>
                       <TableHead>Package</TableHead>
-                      <TableHead className="cursor-pointer" onClick={() => handleSort("date")}>
-                        Date {sortBy === "date" && (sortDirection === "asc" ? "↑" : "↓")}
-                      </TableHead>
+                      <TableHead>Date</TableHead>
                       <TableHead className="text-center">Guests</TableHead>
-                      <TableHead className="cursor-pointer text-right" onClick={() => handleSort("total")}>
-                        Total {sortBy === "total" && (sortDirection === "asc" ? "↑" : "↓")}
-                      </TableHead>
-                      <TableHead className="cursor-pointer text-center" onClick={() => handleSort("status")}>
-                        Status {sortBy === "status" && (sortDirection === "asc" ? "↑" : "↓")}
-                      </TableHead>
-                      <TableHead className="text-center">Actions</TableHead>
+                      <TableHead className="text-right">Total</TableHead>
+                      <TableHead>Status</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -825,26 +479,10 @@ export default function EventsView() {
                         <TableCell>{formatDate(booking.event_date)}</TableCell>
                         <TableCell className="text-center">{booking.guest_count}</TableCell>
                         <TableCell className="text-right font-medium">{formatCurrency(booking.total_price)}</TableCell>
-                        <TableCell className="text-center">
+                        <TableCell>
                           <Badge className={getStatusColor(booking.status)}>
-                            <span className="flex items-center gap-1">
-                              {getStatusIcon(booking.status)}
-                              {booking.status}
-                            </span>
+                            {booking.status}
                           </Badge>
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <div className="flex justify-center gap-2">
-                            <Button variant="ghost" size="sm">
-                              <Eye className="h-4 w-4" />
-                            </Button>
-                            <Button variant="ghost" size="sm">
-                              <Edit className="h-4 w-4" />
-                            </Button>
-                            <Button variant="ghost" size="sm">
-                              <Printer className="h-4 w-4" />
-                            </Button>
-                          </div>
                         </TableCell>
                       </TableRow>
                     ))}

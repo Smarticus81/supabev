@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import { migrate } from 'drizzle-orm/neon-http/migrator';
+import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import db from './index';
 
 async function main() {

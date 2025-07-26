@@ -1,751 +1,436 @@
 "use client"
 
-import { useState, useEffect, useMemo, useCallback } from "react"
-import { Search, Save, CreditCard, Menu, Users, Receipt, Package, X, Settings, Calendar } from "lucide-react"
-import { Card } from "@/components/ui/card"
+import { useState, useEffect, useRef, useMemo } from "react"
+import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
+import { Badge } from "@/components/ui/badge"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { 
+  Menu, 
+  Box, 
+  Users, 
+  Package, 
+  Calendar, 
+  BarChart3, 
+  Settings,
+  Search
+} from "lucide-react"
+import { useRouter } from "next/navigation"
 import { Input } from "@/components/ui/input"
-import { Toaster } from "@/components/ui/toaster"
-import OrderPanel from "@/components/order-panel"
-import CategoryGrid from "@/components/category-grid"
-import DatabaseViewer from "@/components/database-viewer"
-import ItemsView from "@/components/items-view"
-import TabsView from "@/components/tabs-view"
-import TransactionsView from "@/components/transactions-view"
-import StaffView from "@/components/staff-view"
-import EventsView from "@/components/events-view"
-import { VoiceControlButton } from "@/components/voice-control-button"
-import { VoiceDebug } from "@/components/voice-debug"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
-import { useForm } from 'react-hook-form'
-import { useIsMobile } from '@/hooks/use-mobile'
-import { useToast } from '@/hooks/use-toast'
-import { SettingsView } from "@/components/settings-view"
-import { SafeComponent } from "@/components/error-boundary"
-import Image from "next/image"
 
-interface OrderItem {
-  id: string;
-  name: string;
-  price: number;
-  quantity: number;
+import CategoryGrid from "@/components/category-grid"
+import DrinksList from "@/components/drinks-list"
+import OrderPanel from "@/components/order-panel"
+import ItemsView from "@/components/items-view"
+import { StaffView } from "@/components/staff-view"
+import TabsView from "@/components/tabs-view"
+import EventsView from "@/components/events-view"
+import TransactionsView from "@/components/transactions-view"
+import { SettingsView } from "@/components/settings-view"
+import { VoiceControlButton } from "@/components/voice-control-button"
+
+// Real-time event manager
+class RealTimeManager {
+  private static instance: RealTimeManager
+  private eventSource: EventSource | null = null
+  private subscribers: Map<string, Set<(data: any) => void>> = new Map()
+  private reconnectAttempts = 0
+  private maxReconnectAttempts = 5
+  private reconnectDelay = 1000
+
+  static getInstance(): RealTimeManager {
+    if (!RealTimeManager.instance) {
+      RealTimeManager.instance = new RealTimeManager()
+    }
+    return RealTimeManager.instance
+  }
+
+  connect() {
+    if (this.eventSource?.readyState === EventSource.OPEN) {
+      return
+    }
+
+    try {
+      this.eventSource = new EventSource('/api/realtime')
+      
+      this.eventSource.onopen = () => {
+        console.log('🔗 Real-time connection established')
+        this.reconnectAttempts = 0
+      }
+
+      this.eventSource.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data)
+          this.notifySubscribers(data.type, data.payload)
+        } catch (error) {
+          console.error('Failed to parse real-time message:', error)
+        }
+      }
+
+      this.eventSource.onerror = () => {
+        console.error('Real-time connection error')
+        this.reconnect()
+      }
+    } catch (error) {
+      console.error('Failed to establish real-time connection:', error)
+      this.reconnect()
+    }
+  }
+
+  private reconnect() {
+    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+      console.error('Max reconnection attempts reached')
+      return
+    }
+
+    this.reconnectAttempts++
+    const delay = this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1)
+    
+    setTimeout(() => {
+      console.log(`Attempting to reconnect (${this.reconnectAttempts}/${this.maxReconnectAttempts})...`)
+      this.connect()
+    }, delay)
+  }
+
+  subscribe(eventType: string, callback: (data: any) => void) {
+    if (!this.subscribers.has(eventType)) {
+      this.subscribers.set(eventType, new Set())
+    }
+    this.subscribers.get(eventType)!.add(callback)
+  }
+
+  unsubscribe(eventType: string, callback: (data: any) => void) {
+    this.subscribers.get(eventType)?.delete(callback)
+  }
+
+  private notifySubscribers(eventType: string, data: any) {
+    this.subscribers.get(eventType)?.forEach(callback => callback(data))
+  }
+
+  disconnect() {
+    this.eventSource?.close()
+    this.eventSource = null
+  }
 }
 
 export default function Home() {
-  const [drinks, setDrinks] = useState<any[]>([])
-  const [categories, setCategories] = useState<string[]>([])
-  const [selectedPackage, setSelectedPackage] = useState("Silver Pkg")
-  const [orders, setOrders] = useState<OrderItem[]>([])
-  const [searchQuery, setSearchQuery] = useState("")
+  const router = useRouter()
+  
+  // All hooks must be called unconditionally at the top level
+  const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
-  const [currentTab, setCurrentTab] = useState("menu")
-  const [customerName, setCustomerName] = useState("Andrew Wagner")
-  const [showDbViewer, setShowDbViewer] = useState(false)
-  const [showMobileOrder, setShowMobileOrder] = useState(false)
-  const [isBevSpeaking, setIsBevSpeaking] = useState(false)
-  const [volumeLevel, setVolumeLevel] = useState(1);
-  const [showMobileSearch, setShowMobileSearch] = useState(false)
+  const [selectedCategory, setSelectedCategory] = useState("All")
+  const [selectedView, setSelectedView] = useState("items")
+  const [orders, setOrders] = useState<any[]>([])
+  const [searchQuery, setSearchQuery] = useState("")
+  const [drinks, setDrinks] = useState<any[]>([])
+  const [categories, setCategories] = useState<any[]>([])
+  const [drinksLoading, setDrinksLoading] = useState(false)
+  const realTimeManager = useRef<RealTimeManager>()
 
-  // Initialize hooks
-  const { toast } = useToast()
-  const isMobile = useIsMobile()
-
-  // Package options
-  const packages = ["Silver Pkg", "Gold Pkg", "Platinum Pkg", "Others"]
-
-  // Category data updated to match new data structure
-  const categoryData = useMemo(
-    () => [
-      { name: "Beer", count: 10, color: "bg-blue-200", textColor: "text-blue-800" },
-      { name: "Wine", count: 9, color: "bg-green-200", textColor: "text-green-800" },
-      { name: "Signature", count: 3, color: "bg-yellow-200", textColor: "text-yellow-800" },
-      { name: "Classics", count: 3, color: "bg-orange-200", textColor: "text-orange-800" },
-      { name: "Spirits", count: 18, color: "bg-red-200", textColor: "text-red-800" },
-      { name: "Non-Alcoholic", count: 15, color: "bg-purple-200", textColor: "text-purple-800" },
-    ],
-    [],
-  )
-
-  const fetchDrinks = useCallback(async () => {
-      try {
-        setIsLoading(true)
-        const response = await fetch("/api/drinks")
-        
-        if (!response.ok) {
-          throw new Error(`Failed to fetch drinks: ${response.status} ${response.statusText}`)
-        }
-        
+  // Fetch drinks data
+  const fetchDrinks = async () => {
+    setDrinksLoading(true)
+    try {
+      const response = await fetch('/api/drinks')
+      if (response.ok) {
         const data = await response.json()
-
-        const drinksArray: any[] = Array.isArray(data) ? data : [];
-        setDrinks(drinksArray)
-
-        // Extract unique categories only when data is array
-        const uniqueCategories = [...new Set(drinksArray.map((drink: any) => drink.category))] as string[]
-        setCategories(uniqueCategories)
-
-        setIsLoading(false)
-      } catch (error) {
-        console.error("Error fetching drinks:", error)
+        setDrinks(Array.isArray(data) ? data : [])
         
-        // Show user-friendly error message
-        toast({
-          title: "Error loading drinks",
-          description: "Unable to load drink menu. Please refresh the page or try again later.",
-          variant: "destructive",
-        })
-        
-        // Set fallback data to prevent app crash
-        setDrinks([])
-        setCategories([])
-        setIsLoading(false)
+        // Extract categories
+        const uniqueCategories = [...new Set(data.map((drink: any) => drink.category))]
+        setCategories(uniqueCategories.map(cat => ({
+          name: cat,
+          count: data.filter((d: any) => d.category === cat).length,
+          color: "bg-blue-200",
+          textColor: "text-blue-800"
+        })))
       }
-  }, [toast])
+    } catch (error) {
+      console.error('Error fetching drinks:', error)
+      setDrinks([])
+      setCategories([])
+    } finally {
+      setDrinksLoading(false)
+    }
+  }
 
-  const handleNavigateToTab = (tab: string) => {
-    setCurrentTab(tab);
-    // You can also add logic here to scroll to the relevant section if your layout supports it
-    console.log(`Navigating to tab: ${tab}`);
-  };
-
-  // Load drinks data
+  // Authentication check
   useEffect(() => {
-    fetchDrinks()
-  }, [fetchDrinks])
+    const checkAuth = () => {
+      const authToken = localStorage.getItem('beverage_pos_auth')
+      if (!authToken) {
+        router.push('/landing')
+        return
+      }
+      setIsAuthenticated(true)
+      setSelectedView('dashboard') // Default to dashboard after auth
+      fetchDrinks()
+      setIsLoading(false)
+    }
+    
+    checkAuth()
+  }, [router])
 
-  // Debug orders state changes (keep minimal logging)
+  // Fetch drinks when authenticated
   useEffect(() => {
-    console.log('Cart updated:', orders.length, 'items');
+    if (isAuthenticated) {
+      fetchDrinks()
+    }
+  }, [isAuthenticated])
+
+  // Initialize real-time connection - always called
+  useEffect(() => {
+    if (!isAuthenticated) return
+
+    realTimeManager.current = RealTimeManager.getInstance()
+    realTimeManager.current.connect()
+
+    // Subscribe to cart updates
+    const handleCartUpdate = (data: any) => {
+      setOrders(data.items || [])
+    }
+
+    // Subscribe to inventory updates
+    const handleInventoryUpdate = (data: any) => {
+      // Trigger inventory refresh across components
+      window.dispatchEvent(new CustomEvent('inventory-updated', { detail: data }))
+      // Also refresh drinks data
+      fetchDrinks().catch(console.error)
+    }
+
+    // Subscribe to order updates
+    const handleOrderUpdate = (data: any) => {
+      // Trigger order refresh across components
+      window.dispatchEvent(new CustomEvent('order-updated', { detail: data }))
+    }
+
+    realTimeManager.current.subscribe('cart_update', handleCartUpdate)
+    realTimeManager.current.subscribe('inventory_update', handleInventoryUpdate)
+    realTimeManager.current.subscribe('order_update', handleOrderUpdate)
+
+    return () => {
+      realTimeManager.current?.unsubscribe('cart_update', handleCartUpdate)
+      realTimeManager.current?.unsubscribe('inventory_update', handleInventoryUpdate)
+      realTimeManager.current?.unsubscribe('order_update', handleOrderUpdate)
+      realTimeManager.current?.disconnect()
+    }
+  }, [isAuthenticated])
+
+  // Ensure default view is 'items' only on initial load (handled by initialState)
+
+  // Calculate total - always called
+  const total = useMemo(() => {
+    return orders.reduce((sum, order) => sum + (order.price * order.quantity), 0)
   }, [orders])
 
-  // Voice cart polling for syncing voice-added items with UI
-  useEffect(() => {
-    const pollVoiceCart = async () => {
-      try {
-        const response = await fetch('/api/voice-cart');
-        
-        if (!response.ok) {
-          // Silently handle 404 or other errors (voice cart may not exist)
-          return;
-        }
-        
-        const data = await response.json();
-        
-        if (data.success && Array.isArray(data.items)) {
-          // Only update if the cart has changed to prevent unnecessary re-renders
-          const currentIds = orders.map(item => item.id).sort();
-          const voiceIds = data.items.map((item: any) => item.id).sort();
-          
-          if (JSON.stringify(currentIds) !== JSON.stringify(voiceIds)) {
-            console.log('Voice cart sync: updating UI cart with', data.items.length, 'items');
-            setOrders(data.items);
-          }
-        }
-      } catch (error) {
-        // Silently handle voice cart errors to prevent UI disruption
-        console.debug('Voice cart polling error:', error.message);
-      }
-    };
+  // Show loading screen while checking authentication
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading...</p>
+        </div>
+      </div>
+    )
+  }
 
-    // Poll every 2 seconds instead of every 500ms for better performance
-    const interval = setInterval(pollVoiceCart, 2000);
-    
-    // Also poll immediately on mount
-    pollVoiceCart();
-    
-    return () => clearInterval(interval);
-  }, [orders]) // Depend on orders to avoid unnecessary polling when cart hasn't changed
+  // Redirect to landing if not authenticated
+  if (!isAuthenticated) {
+    return null
+  }
 
-  // removed Vapi overlay logic
-
-  // Add drink to order
   const addToOrder = (drink: any) => {
-    setOrders((prevOrders) => {
-      // Ensure ID comparison works properly by converting both to strings
-      const drinkId = String(drink.id);
-      const existingItem = prevOrders.find((item) => String(item.id) === drinkId);
-      
-      if (existingItem) {
-        return prevOrders.map((item) =>
-          String(item.id) === drinkId ? { ...item, quantity: item.quantity + 1 } : item,
-        );
-      }
-      
-      const newOrderItem = { 
-        id: drinkId, 
-        name: drink.name, 
-        price: drink.price, 
-        quantity: 1 
-      };
-      return [...prevOrders, newOrderItem];
-    });
-  };
-
-  // Remove item from order
-  const removeFromOrder = (itemId: string) => {
-    if (itemId === "all") {
-      setOrders([])
-      return
-    }
-
-    const updatedOrders = orders.filter((item) => item.id !== itemId)
-    setOrders(updatedOrders)
-  }
-
-  // Clear entire cart
-  const clearCart = () => {
-    console.log("clearCart called - clearing orders");
-    setOrders([])
-  }
-
-  // Update item quantity
-  const updateQuantity = (itemId: string, newQuantity: number) => {
-    if (newQuantity <= 0) {
-      removeFromOrder(itemId)
-      return
-    }
-
-    setOrders(orders.map((item) => (item.id === itemId ? { ...item, quantity: newQuantity } : item)))
-  }
-
-  // Calculate totals
-  const calculateSubtotal = useMemo(() => {
-    return () => orders.reduce((sum, item) => sum + item.price * item.quantity, 0)
-  }, [orders])
-
-  const calculateTax = useMemo(() => {
-    return () => calculateSubtotal() * 0.0825 // 8.25% tax
-  }, [calculateSubtotal])
-
-  const calculateTotal = useMemo(() => {
-    return () => calculateSubtotal() + calculateTax()
-  }, [calculateSubtotal, calculateTax])
-
-  // Add save current order function
-  const saveCurrentOrder = () => {
-    if (orders.length === 0) {
-      toast({
-        title: "No Order to Save",
-        description: "Please add items to the order before saving.",
-        variant: "destructive",
-      })
-      return
-    }
-
-    // Save order to localStorage as draft
-    const draftOrder = {
-      id: Date.now().toString(),
-      customer: customerName,
-      items: orders,
-      total: calculateTotal(),
-      timestamp: new Date().toISOString(),
-      status: 'draft'
-    }
-
-    const existingDrafts = JSON.parse(localStorage.getItem('draftOrders') || '[]')
-    existingDrafts.push(draftOrder)
-    localStorage.setItem('draftOrders', JSON.stringify(existingDrafts))
-
-    toast({
-      title: "Order Saved",
-      description: `Draft order saved for ${customerName}`,
-    })
-  }
-
-  // Add payment processing function
-  const processPayment = () => {
-    if (orders.length === 0) {
-      toast({
-        title: "No Items to Pay",
-        description: "Please add items to the order before processing payment.",
-        variant: "destructive",
-      })
-      return
-    }
-
-    // Simulate payment processing
-    toast({
-      title: "Payment Processing",
-      description: `Processing payment of $${calculateTotal().toFixed(2)}...`,
-    })
-
-    // In a real app, you would integrate with a payment processor here
-    setTimeout(() => {
-      toast({
-        title: "Payment Successful",
-        description: "Payment has been processed successfully.",
-      })
-    }, 2000)
-  }
-  const completeOrder = async () => {
-    if (orders.length === 0) {
-      return;
-    }
-
-    try {
-      // Convert UI order format to the format expected by the API
-      const orderItems = orders.map(item => ({
-        id: item.id,
-        name: item.name,
-        quantity: item.quantity,
-        price: item.price,
-      }));
-
-      const orderData = {
-        items: orderItems,
-        total: calculateTotal(),
-        subtotal: calculateSubtotal(),
-        tax: calculateTax()
-      };
-
-      console.log('Completing order:', orderData);
-
-      const response = await fetch('/api/orders', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(orderData),
-      });
-
-      const result = await response.json();
-
-      if (response.ok && result.success) {
-        // Clear the UI cart
-        setOrders([]);
-        
-        // Clear the voice cart as well
-        try {
-          await fetch('/api/voice-cart', { method: 'DELETE' });
-        } catch (error) {
-          console.error('Error clearing voice cart:', error);
+    // Add to cart via real-time API
+    fetch('/api/voice-cart', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'add',
+        item: {
+          id: drink.id,
+          name: drink.name,
+          price: drink.price,
+          quantity: 1
         }
-        
-        // Show success message
-        alert(`Order completed successfully! Order ID: ${result.orderId}`);
-        
-        // Optionally refresh drinks to show updated inventory
-        fetchDrinks();
-      } else {
-        throw new Error(result.error || 'Failed to complete order');
-      }
-
-    } catch (error) {
-      console.error('Error completing order:', error);
-      alert('Error completing order. Please try again.');
-    }
+      })
+    }).catch(console.error)
   }
 
-  const form = useForm({
-    defaultValues: {
-      tts_provider: 'deepgram',
-      tts_voice: 'aura-2-juno-en'
-    }
-  })
-  const [config, setConfig] = useState({ tts_provider: 'deepgram', tts_voice: 'aura-2-juno-en' })
-  const [voices, setVoices] = useState<{id: string, name: string}[]>([])
-
-  useEffect(() => {
-    if (currentTab === 'settings') {
-      fetch('/api/config')
-        .then(res => res.json())
-        .then(data => {
-          if (data.config) {
-            setConfig(data.config)
-            // First fetch voices, then reset form
-            fetchVoices(data.config.tts_provider).then(() => {
-              form.reset(data.config)
-            })
-          } else {
-            // No config found, use defaults and fetch voices
-            fetchVoices('deepgram')
-          }
-        })
-        .catch(console.error)
-    }
-  }, [currentTab, form])
-
-  const fetchVoices = async (provider: string, autoSelect: boolean = false): Promise<void> => {
-    try {
-      const res = await fetch(`/api/tts/voices?provider=${provider}`)
-      const data = await res.json()
-      // Deduplicate by id to avoid React key warnings
-      const unique = {} as Record<string, {id: string; name: string}>
-      ;(data.voices || []).forEach((v: any) => { if(!unique[v.id]) unique[v.id] = v })
-      const uniqueVoices = Object.values(unique)
-      setVoices(uniqueVoices)
-      
-      // Auto-select first voice when provider changes
-      if (autoSelect && uniqueVoices.length > 0) {
-        form.setValue('tts_voice', uniqueVoices[0].id, { shouldValidate: true })
-      }
-      
-      return Promise.resolve()
-    } catch (error) {
-      console.error('Failed to fetch voices', error)
-      setVoices([])
-      return Promise.resolve()
-    }
+  const removeFromOrder = (id: string) => {
+    // Remove from cart via real-time API
+    fetch('/api/voice-cart', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'remove',
+        itemId: id
+      })
+    }).catch(console.error)
   }
 
-  // Watch provider change
-  useEffect(() => {
-    const subscription = form.watch((value, { name }) => {
-      if (name === 'tts_provider' && value.tts_provider) {
-        fetchVoices(value.tts_provider, true) // Auto-select when provider changes
-      }
-    })
-    return () => subscription.unsubscribe()
-  }, [form])
-
-  const onSubmit = async (data: { tts_provider: string; tts_voice: string }) => {
-    try {
-      const res = await fetch('/api/config', {
+  const updateQuantity = (id: string, quantity: number) => {
+    if (quantity === 0) {
+      removeFromOrder(id)
+    } else {
+      // Update quantity via real-time API
+      fetch('/api/voice-cart', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data)
+        body: JSON.stringify({
+          action: 'update',
+          itemId: id,
+          quantity
+        })
+      }).catch(console.error)
+    }
+  }
+
+  const completeOrder = async () => {
+    // Complete order via real-time API
+    fetch('/api/voice-cart', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'complete'
       })
-      if (res.ok) {
-        toast({ title: 'Settings saved', description: 'TTS configuration updated successfully.' })
-      } else {
-        throw new Error('Failed to save')
-      }
-    } catch (error) {
-      toast({ title: 'Error', description: 'Failed to save settings.', variant: 'destructive' })
+    }).then(() => {
+      alert('Order completed successfully!')
+    }).catch(console.error)
+  }
+
+  const navigation = [
+    { id: "menu", icon: Menu, label: "Menu" },
+    { id: "items", icon: Box, label: "Items" },
+    { id: "staff", icon: Users, label: "Dashboard" },
+    { id: "tabs", icon: Package, label: "Tabs" },
+    { id: "events", icon: Calendar, label: "Events" },
+    { id: "transactions", icon: BarChart3, label: "Transactions" },
+    { id: "settings", icon: Settings, label: "Settings" }
+  ]
+
+  const renderView = () => {
+    console.log('Current selectedView:', selectedView)
+    switch (selectedView) {
+      case "menu":
+        console.log('Rendering menu view with drinks:', drinks.length, 'categories:', categories.length)
+        return (
+          <div className="h-full flex gap-6">
+            <div className="flex-1">
+              <CategoryGrid 
+                categories={categories}
+                drinks={drinks}
+                searchQuery={searchQuery}
+                onAddToOrder={addToOrder}
+                isLoading={drinksLoading}
+              />
+            </div>
+            <div className="w-80 h-full flex flex-col">
+              <OrderPanel 
+                orders={orders}
+                onRemoveItem={removeFromOrder}
+                onUpdateQuantity={updateQuantity}
+                onCompleteOrder={completeOrder}
+                total={total}
+              />
+            </div>
+          </div>
+        )
+      case "items":
+        return <ItemsView />
+      case "staff":
+        return <StaffView />
+      case "tabs":
+        return <TabsView />
+      case "events":
+        return <EventsView />
+      case "transactions":
+        return <TransactionsView />
+      case "settings":
+        return <SettingsView />
+      default:
+        return <ItemsView />
     }
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col pb-20">
-      {/* Top Navigation */}
-      <div className="bg-white border-b border-gray-200 px-3 sm:px-6 py-3 sm:py-4 flex-shrink-0">
+    <div className="min-h-screen bg-gray-50 flex flex-col">
+      {/* Header */}
+      <div className="bg-white/90 backdrop-blur-sm border-b border-gray-100 px-4 sm:px-6 py-3 flex-shrink-0">
         <div className="flex items-center justify-between">
-          {/* Logo and Brand */}
-          <div className="flex items-center space-x-4">
-            <div className="flex items-center space-x-3">
-              <Image
-                src="/logo.svg"
-                alt="BevPro Logo"
-                width={140}
-                height={24}
-                className="h-6 w-auto"
-                priority
-              />
-              <div className="hidden sm:block">
-                <h1 className="text-lg font-bold text-[#17223B]"></h1>
-                <p className="text-xs text-gray-500">Knotting Hill Place</p>
-              </div>
+          {/* Logo */}
+          <div className="flex items-center gap-3">
+            <svg width="70" height="12" viewBox="0 0 70 12" fill="none" xmlns="http://www.w3.org/2000/svg" className="h-4 w-auto">
+              <path fillRule="evenodd" clipRule="evenodd" d="M9.71591 0.33965C9.71591 0.33965 11.7913 0.825162 12.1411 2.68747C12.6261 5.27007 11.171 5.97442 11.171 5.97442C11.171 5.97442 12.8686 7.14834 12.1411 9.26138C11.5086 11.0981 9.71591 11.6092 9.71591 11.6092H1.95513C1.53158 11.6092 1.22941 11.4817 0.929907 11.1918C0.630406 10.9019 0.499999 10.6105 0.5 10.2005V1.74834C0.500005 1.33831 0.630407 1.04698 0.929907 0.757041C1.22941 0.467105 1.53158 0.339657 1.95513 0.33965C4.86275 0.339626 9.707 0.33965 9.71591 0.33965ZM3.29439 7.2266V8.68746H9.31308V7.2266H3.29439ZM3.29439 4.51356H9.31308V3.05269H3.29439V4.51356Z" fill="#17223B"/>
+              <path d="M50.0452 4.38262C50.0452 3.29516 49.5806 2.41515 48.7422 1.76394C48.2495 1.38117 47.7508 1.35653 45.9611 1.35654C45.0857 1.35654 44.5663 1.35771 44.1428 1.41646C43.7558 1.47014 43.4463 1.57325 43.0216 1.80002C42.1833 2.38031 41.8048 3.02065 41.6206 3.77304C41.424 4.57632 41.447 5.49857 41.447 6.67827V11.4783C41.447 11.7664 41.2064 12 40.9097 12C40.6129 12 40.3723 11.7664 40.3723 11.4783V6.67827C40.3723 5.56235 40.3416 4.4848 40.5748 3.53174C40.8188 2.53513 41.3483 1.66755 42.4273 0.929978L42.4509 0.914081L42.4758 0.900426C43.0061 0.614382 43.4446 0.459341 43.9908 0.383579C44.5077 0.311884 45.1168 0.313068 45.9611 0.313063C47.6105 0.313053 48.5628 0.288329 49.4135 0.949135C50.4966 1.79043 51.1199 2.9657 51.1199 4.38262C51.1199 5.77571 50.5164 7.02097 49.3388 7.65612C48.5569 8.07787 47.8243 8.34783 46.4984 8.34783H43.1667C42.8699 8.34783 42.6293 8.11424 42.6293 7.82609C42.6293 7.53795 42.8699 7.30436 43.1667 7.30436H46.4984C47.6175 7.30436 48.1722 7.09168 48.817 6.74389C49.5739 6.33558 50.0452 5.49393 50.0452 4.38262Z" fill="#17223B"/>
+              <path d="M52.5724 11.4157V4.28314C52.5724 2.77143 54.0191 0.250475 57.1939 0.250475C57.4907 0.250475 57.7313 0.484065 57.7313 0.772213C57.7313 1.06036 57.4907 1.29395 57.1939 1.29395C54.7139 1.29395 53.6472 3.24427 53.6472 4.28314V11.4157L53.6445 11.4691C53.6169 11.7321 53.388 11.9374 53.1098 11.9374C52.813 11.9374 52.5724 11.7038 52.5724 11.4157Z" fill="#17223B"/>
+              <path d="M36.1143 1.19914C36.5076 0.493956 37.4301 0.20334 38.1749 0.550022C38.9197 0.896749 39.2046 1.74957 38.8113 2.45477L34.0691 10.9583C33.7834 11.4707 33.2183 11.764 32.6449 11.7531C32.0715 11.7639 31.5065 11.4706 31.2208 10.9583L26.4786 2.45477C26.0853 1.74957 26.3703 0.896749 27.1151 0.550022C27.8598 0.203324 28.7823 0.493952 29.1756 1.19914L32.6449 7.42026L36.1143 1.19914Z" fill="#17223B"/>
+              <path d="M68.4252 5.94782C68.4252 3.23922 66.1636 1.04348 63.3738 1.04348C60.584 1.04348 58.3224 3.23922 58.3224 5.94782C58.3224 8.65641 60.584 10.8522 63.3738 10.8522V11.8956C59.9904 11.8956 57.2477 9.2327 57.2477 5.94782C57.2477 2.66293 59.9904 0 63.3738 0C66.7572 0 69.5 2.66293 69.5 5.94782C69.5 9.2327 66.7572 11.8956 63.3738 11.8956V10.8522C66.1636 10.8522 68.4252 8.65641 68.4252 5.94782Z" fill="#17223B"/>
+              <path d="M23.0806 8.76521C23.9058 8.76522 24.5748 9.41471 24.5748 10.2159V10.2988C24.5747 11.0542 23.9439 11.6666 23.1658 11.6666C18.3336 11.6666 16.4628 11.8238 15.3624 11.2638C14.4692 10.8093 14.0421 9.70399 14.0421 8.76521H14.0475V7.51304H14.0421V4.59131H14.0475V3.33913H14.0421C14.0421 2.40033 14.4692 1.29483 15.3624 0.840292C16.4628 0.280373 18.3336 0.437778 23.1658 0.437779C23.9439 0.437779 24.5747 1.05007 24.5748 1.80551V1.88846C24.5747 2.68961 23.9058 3.33912 23.0806 3.33913H17.0569V4.59131H22.6402C23.4712 4.59131 24.1449 5.24536 24.1449 6.05217C24.1448 6.85897 23.4712 7.51304 22.6402 7.51304H17.0569V8.76521H23.0806Z" fill="#17223B"/>
+            </svg>
+            <div>
+              <p className="text-xs text-gray-500 font-medium">Knotting Hill Place</p>
             </div>
           </div>
 
-          {/* Package Tabs - Hidden on mobile, shown on tablet+ */}
-          <div className="hidden lg:block flex-1 mx-8">
-            <Tabs value={selectedPackage} onValueChange={setSelectedPackage}>
-              <TabsList className="bg-gray-100 p-1">
-                {packages.map((pkg) => (
-                  <TabsTrigger
-                    key={pkg}
-                    value={pkg}
-                    className="px-4 lg:px-6 py-2 text-sm font-medium data-[state=active]:bg-white data-[state=active]:shadow-sm"
-                  >
-                    {pkg}
-                  </TabsTrigger>
-                ))}
-              </TabsList>
-            </Tabs>
-          </div>
-
-          {/* Mobile Package Selector */}
-          <div className="md:hidden flex-1">
-            <select
-              value={selectedPackage}
-              onChange={(e) => setSelectedPackage(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white text-sm"
-            >
-              {packages.map((pkg) => (
-                <option key={pkg} value={pkg}>
-                  {pkg}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Search and Actions */}
-          <div className="flex items-center gap-2 sm:gap-4 ml-2 sm:ml-8">
-            {/* Search - Hidden on small mobile */}
-            <div className="relative hidden sm:block">
+          {/* Search and Voice Control */}
+          <div className="flex items-center gap-3">
+            <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
               <Input
                 type="search"
                 placeholder="Search"
-                className="pl-10 w-48 lg:w-64 bg-gray-50 border-gray-200"
+                className="pl-10 w-48 bg-gray-50/50 border-0 rounded-lg"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
             </div>
 
-            {/* Mobile Search Button */}
-            <Button 
-              variant="outline" 
-              size="icon" 
-              className="sm:hidden bg-transparent"
-              onClick={() => setShowMobileSearch(!showMobileSearch)}
-            >
-              <Search className="h-4 w-4" />
-            </Button>
-
-            {/* Action Buttons */}
-            <Button 
-              variant="outline" 
-              className="hidden sm:flex px-4 lg:px-6 bg-transparent"
-              onClick={saveCurrentOrder}
-            >
-              <Save className="h-4 w-4 mr-2" />
-              <span className="hidden lg:inline">Save</span>
-            </Button>
-
-            <Button 
-              className="px-4 lg:px-6 bg-yellow-400 hover:bg-yellow-500 text-black"
-              onClick={processPayment}
-            >
-              <CreditCard className="h-4 w-4 mr-2" />
-              <span className="hidden sm:inline">Pay</span>
-            </Button>
-
-            <Button 
-              className="px-4 lg:px-6 bg-black hover:bg-gray-800 text-[#FFD700]" 
-              disabled={orders.length === 0}
-              onClick={completeOrder}
-            >
-              <span className="hidden sm:inline">Complete Order</span>
-              <span className="sm:hidden">Complete</span>
-            </Button>
-
+            {/* Cart indicator */}
+            {orders.length > 0 && (
+              <div className="flex items-center gap-2 px-3 py-2 bg-gray-900 text-white rounded-lg">
+                <Package className="h-4 w-4" />
+                <span className="text-sm font-medium">{orders.length}</span>
+              </div>
+            )}
           </div>
         </div>
-      </div>
-
-      {/* Mobile Package Selector */}
-      <div className="lg:hidden bg-white border-b border-gray-200 px-3 py-2">
-        <Select value={selectedPackage} onValueChange={setSelectedPackage}>
-          <SelectTrigger className="w-full">
-            <SelectValue placeholder="Select Package" />
-          </SelectTrigger>
-          <SelectContent>
-            {packages.map((pkg) => (
-              <SelectItem key={pkg} value={pkg}>
-                {pkg}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
       </div>
 
       {/* Main Content */}
-      <div className="flex flex-1 min-h-0">
-        {currentTab === "menu" ? (
-          <>
-            {/* Left Side - Categories */}
-            <div className="flex-1 p-3 sm:p-6 min-h-0">
-              <CategoryGrid
-                categories={categoryData}
-                drinks={drinks}
-                searchQuery={searchQuery}
-                onAddToOrder={addToOrder}
-                isLoading={isLoading}
-              />
-            </div>
-
-            {/* Right Side - Order Summary (Desktop/Tablet only) */}
-            <div className="hidden md:block w-80 lg:w-96 bg-white border-l border-gray-200 flex-shrink-0">
-              <OrderPanel
-                orders={orders}
-                removeFromOrder={removeFromOrder}
-                updateQuantity={updateQuantity}
-                total={calculateTotal()}
-                onCompleteOrder={completeOrder}
-              />
-            </div>
-          </>
-        ) : currentTab === "items" ? (
-          <div className="flex-1 p-3 sm:p-6 min-h-0">
-            <ItemsView
-              onAddToOrder={addToOrder}
-              searchQuery={searchQuery}
-              onSearchChange={setSearchQuery}
-              onRefresh={fetchDrinks}
-            />
-          </div>
-        ) : currentTab === "tabs" ? (
-          <div className="flex-1 p-3 sm:p-6 min-h-0">
-            <TabsView currentCustomer={customerName} orders={orders} total={calculateTotal()} />
-          </div>
-        ) : currentTab === "transactions" ? (
-          <div className="flex-1 p-3 sm:p-6 min-h-0">
-            <TransactionsView />
-          </div>
-        ) : currentTab === "staff" ? (
-          <div className="flex-1 p-3 sm:p-6 min-h-0">
-            <StaffView />
-          </div>
-        ) : currentTab === "events" ? (
-          <div className="flex-1 p-3 sm:p-6 min-h-0">
-            <EventsView />
-          </div>
-        ) : currentTab === "settings" ? (
-          <div className="flex-1 p-3 sm:p-6 min-h-0">
-            <SettingsView />
-          </div>
-        ) : null}
+      <div className="flex-1 p-6 pb-20">
+        {renderView()}
       </div>
 
-      {/* Mobile Search Overlay */}
-      {showMobileSearch && (
-        <div className="fixed inset-0 bg-black/50 z-50 sm:hidden">
-          <div className="bg-white p-4 m-4 rounded-lg">
-            <div className="flex items-center gap-2 mb-4">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-                <Input
-                  type="search"
-                  placeholder="Search drinks..."
-                  className="pl-10 w-full bg-gray-50 border-gray-200"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  autoFocus
-                />
-              </div>
-              <Button 
-                variant="ghost" 
-                size="icon" 
-                onClick={() => setShowMobileSearch(false)}
+      {/* Voice Control Button - Fixed Position with High Z-Index */}
+      <div className="fixed bottom-24 right-6 z-[9999]">
+        <VoiceControlButton />
+      </div>
+
+      {/* Bottom Navigation */}
+      <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-sm border-t border-gray-100 px-6 py-3 z-50">
+        <div className="flex justify-center">
+          <div className="flex bg-gray-100 rounded-xl p-1">
+            {navigation.map(({ id, icon: Icon, label }) => (
+              <button
+                key={id}
+                onClick={() => {
+                  console.log('Clicking tab:', id)
+                  setSelectedView(id)
+                }}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all duration-200 ${
+                  selectedView === id
+                    ? 'bg-white text-gray-900 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
               >
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
-            <div className="text-sm text-gray-500">
-              {searchQuery ? `Searching for "${searchQuery}"` : "Enter a drink name to search"}
-            </div>
+                <Icon className="h-4 w-4" />
+                <span className="text-sm font-medium">{label}</span>
+              </button>
+            ))}
           </div>
         </div>
-      )}
-
-      {/* Mobile Order Summary Overlay */}
-      {showMobileOrder && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-[60] md:hidden">
-          <div className="absolute bottom-0 left-0 right-0 bg-white rounded-t-lg max-h-[80vh] overflow-hidden">
-            <div className="flex items-center justify-between p-4 border-b">
-              <h2 className="text-lg font-semibold">Current Order</h2>
-              <Button variant="ghost" size="icon" onClick={() => setShowMobileOrder(false)}>
-                <X className="h-5 w-5" />
-              </Button>
-            </div>
-            <div className="overflow-auto max-h-[calc(80vh-120px)]">
-              <OrderPanel
-                orders={orders}
-                removeFromOrder={removeFromOrder}
-                updateQuantity={updateQuantity}
-                total={calculateTotal()}
-                onCompleteOrder={completeOrder}
-              />
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Bottom Navigation - Fixed */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-3 sm:px-6 py-2 sm:py-3 flex-shrink-0 safe-area-bottom z-50">
-        <div className="flex items-center justify-center gap-4 sm:gap-8">
-          <Button
-            variant={currentTab === "menu" ? "default" : "ghost"}
-            className="flex flex-col items-center gap-1 h-auto py-2 px-3 sm:px-4 min-w-0"
-            onClick={() => setCurrentTab("menu")}
-          >
-            <Menu className="h-5 w-5" />
-            <span className="text-xs">Menu</span>
-          </Button>
-
-          <Button
-            variant={currentTab === "staff" ? "default" : "ghost"}
-            className="flex flex-col items-center gap-1 h-auto py-2 px-3 sm:px-4 min-w-0"
-            onClick={() => setCurrentTab("staff")}
-          >
-            <Users className="h-5 w-5" />
-            <span className="text-xs">Staff</span>
-          </Button>
-
-          <Button
-            variant={currentTab === "tabs" ? "default" : "ghost"}
-            className="flex flex-col items-center gap-1 h-auto py-2 px-3 sm:px-4 min-w-0"
-            onClick={() => setCurrentTab("tabs")}
-          >
-            <Package className="h-5 w-5" />
-            <span className="text-xs">Tabs</span>
-          </Button>
-
-          <Button
-            variant={currentTab === "events" ? "default" : "ghost"}
-            className="flex flex-col items-center gap-1 h-auto py-2 px-3 sm:px-4 min-w-0"
-            onClick={() => setCurrentTab("events")}
-          >
-            <Calendar className="h-5 w-5" />
-            <span className="text-xs">Events</span>
-          </Button>
-
-          <Button
-            variant={currentTab === "transactions" ? "default" : "ghost"}
-            className="flex flex-col items-center gap-1 h-auto py-2 px-3 sm:px-4 min-w-0"
-            onClick={() => setCurrentTab("transactions")}
-          >
-            <Receipt className="h-5 w-5" />
-            <span className="text-xs">Transactions</span>
-          </Button>
-
-          <Button
-            variant={currentTab === "items" ? "default" : "ghost"}
-            className="flex flex-col items-center gap-1 h-auto py-2 px-3 sm:px-4 min-w-0"
-            onClick={() => setCurrentTab("items")}
-          >
-            <Package className="h-5 w-5" />
-            <span className="text-xs">Items</span>
-          </Button>
-
-          <Button
-            variant={currentTab === "settings" ? "default" : "ghost"}
-            className="flex flex-col items-center gap-1 h-auto py-2 px-3 sm:px-4 min-w-0"
-            onClick={() => setCurrentTab("settings")}
-          >
-            <Settings className="h-5 w-5" />
-            <span className="text-xs">Settings</span>
-          </Button>
-        </div>
-      </div>
-
-      {showDbViewer && (
-        <Card className="mb-2 overflow-hidden border-[#e2e8f0]">
-          <DatabaseViewer drinks={drinks} />
-        </Card>
-      )}
-
-      <Toaster />
-
-      {/* Voice Control Button - Fixed on bottom right */}
-      <div className="fixed bottom-4 right-4 z-50">
-        <SafeComponent fallback={<div className="text-xs text-gray-500">Voice unavailable</div>}>
-          <VoiceControlButton 
-            onNavigateToTab={handleNavigateToTab}
-            currentTab={currentTab}
-          />
-        </SafeComponent>
-      </div>
-
-      {/* Voice Debug Tool - Temporary */}
-      <div className="fixed bottom-4 left-4 z-50">
-        <SafeComponent fallback={<div className="text-xs text-gray-500">Debug unavailable</div>}>
-          <VoiceDebug />
-        </SafeComponent>
       </div>
     </div>
   )

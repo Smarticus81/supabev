@@ -5,7 +5,8 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
-import { Plus, Minus, Users, Search } from "lucide-react"
+import { Plus, Minus, Users, Search, RefreshCw, LogOut } from "lucide-react"
+import { useEffect } from "react"
 
 interface TabsViewProps {
   currentCustomer: string
@@ -13,20 +14,94 @@ interface TabsViewProps {
   total: number
 }
 
+interface Tab {
+  id: string
+  partyName: string
+  status: "Open" | "Closed"
+  items: { name: string; quantity: number; price: number }[]
+  createdAt: string
+}
+
 export default function TabsView({ currentCustomer, orders, total }: TabsViewProps) {
   const [searchQuery, setSearchQuery] = useState("")
   const [activeTab, setActiveTab] = useState("open")
-  const [openTabs, setOpenTabs] = useState([]) // Start with empty tabs
-  const [closedTabs, setClosedTabs] = useState([])
+  const [openTabs, setOpenTabs] = useState<Tab[]>([]) // Start with empty tabs
+  const [closedTabs, setClosedTabs] = useState<Tab[]>([])
   const [showNewTabForm, setShowNewTabForm] = useState(false)
   const [newTabName, setNewTabName] = useState("")
+  const [tabs, setTabs] = useState<Tab[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  const fetchTabs = async () => {
+    setIsLoading(true)
+    setError(null)
+    try {
+      // Simulate API call for now
+      await new Promise(resolve => setTimeout(resolve, 1000))
+      
+      // Mock data
+      setTabs([
+        {
+          id: `tab-${Date.now()}`,
+          partyName: "Table 1",
+          status: "Open",
+          items: [
+            { name: "Stella Artois", quantity: 2, price: 6.00 },
+            { name: "House Wine", quantity: 1, price: 8.00 }
+          ],
+          createdAt: new Date().toISOString(),
+        },
+        {
+          id: `tab-${Date.now() + 1}`,
+          partyName: "Bar Tab A",
+          status: "Open",
+          items: [
+            { name: "Hendricks Gin", quantity: 1, price: 12.00 },
+            { name: "Corona Extra", quantity: 3, price: 18.00 }
+          ],
+          createdAt: new Date(Date.now() - 30 * 60000).toISOString(),
+        }
+      ])
+    } catch (err) {
+      setError("Failed to load tabs")
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchTabs()
+  }, [])
+
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD'
+    }).format(amount)
+  }
+
+  const formatTime = (dateString: string) => {
+    return new Date(dateString).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  }
+
+  if (isLoading) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="text-gray-600 mt-2">Loading tabs...</p>
+        </div>
+      </div>
+    )
+  }
 
   // Add function to view tab details
-  const viewTabDetails = (tab: any) => {
-    const itemsList = tab.items.map((item: any) => `${item.name} (${item.quantity}x) - $${(item.price * item.quantity).toFixed(2)}`).join('\n')
+  const viewTabDetails = (tab: Tab) => {
+    const itemsList = tab.items.map((item) => `${item.name} (${item.quantity}x) - $${(item.price * item.quantity).toFixed(2)}`).join('\n')
     const total = calculateTabTotal(tab.items)
     
-    alert(`Tab Details:\n\nCustomer: ${tab.customer}\nStatus: ${tab.status}\nItems (${tab.items.length}):\n${itemsList || 'No items'}\n\nTotal: $${total.toFixed(2)}`)
+    alert(`Tab Details:\n\nCustomer: ${tab.partyName}\nStatus: ${tab.status}\nItems (${tab.items.length}):\n${itemsList || 'No items'}\n\nTotal: $${total.toFixed(2)}`)
   }
 
   const currentTabs = activeTab === "open" ? openTabs : closedTabs
@@ -40,7 +115,7 @@ export default function TabsView({ currentCustomer, orders, total }: TabsViewPro
         partyName: newTabName.trim(),
         status: "Open",
         items: [],
-        createdAt: new Date(),
+        createdAt: new Date().toISOString(),
       }
       setOpenTabs([...openTabs, newTab])
       setNewTabName("")
@@ -86,7 +161,7 @@ export default function TabsView({ currentCustomer, orders, total }: TabsViewPro
   const closeTab = (tabId: string) => {
     const tabToClose = openTabs.find((tab) => tab.id === tabId)
     if (tabToClose) {
-      setClosedTabs([...closedTabs, { ...tabToClose, status: "Closed", closedAt: new Date() }])
+      setClosedTabs([...closedTabs, { ...tabToClose, status: "Closed", closedAt: new Date().toISOString() }])
       setOpenTabs(openTabs.filter((tab) => tab.id !== tabId))
     }
   }
@@ -120,6 +195,33 @@ export default function TabsView({ currentCustomer, orders, total }: TabsViewPro
 
   return (
     <div className="h-full flex flex-col bg-gray-50">
+      {/* Minimal Header */}
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center space-x-4">
+          <h1 className="text-2xl font-bold text-gray-800">Tabs</h1>
+          <Button
+            onClick={fetchTabs}
+            variant="outline"
+            size="sm"
+            className="h-9 w-9 p-0 border-gray-200 hover:bg-gray-50 transition-all duration-200"
+          >
+            <RefreshCw className="h-4 w-4" />
+          </Button>
+        </div>
+        <Button
+          onClick={() => {
+            localStorage.removeItem('beverage_pos_auth')
+            window.location.href = '/landing'
+          }}
+          variant="outline"
+          size="sm"
+          className="flex items-center space-x-2 border-red-200 text-red-600 hover:bg-red-50 transition-all duration-200"
+        >
+          <LogOut className="h-4 w-4" />
+          <span>Logout</span>
+        </Button>
+      </div>
+
       {/* Header with Tab Toggle */}
       <div className="bg-white p-3 sm:p-4 border-b border-gray-200">
         <div className="flex items-center justify-between mb-4">

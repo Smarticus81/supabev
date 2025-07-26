@@ -15,7 +15,7 @@ A sophisticated point-of-sale system for luxury beverage venues with AI-powered 
 
 - **Frontend**: Next.js 15, React 19, TypeScript, Tailwind CSS
 - **Backend**: Node.js, Express, Drizzle ORM
-- **Database**: PostgreSQL (Neon)
+- **Database**: Supabase, PostgreSQL
 - **Voice AI**: OpenAI Realtime API, WebRTC
 - **Audio Processing**: Web Audio API, Voice Activity Detection
 

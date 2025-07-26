@@ -23,6 +23,7 @@ import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
+import { Settings, Volume2, Mic, Database, Wifi, RefreshCw, LogOut } from 'lucide-react'
 
 interface Voice {
   id: string;
@@ -264,6 +265,27 @@ export function SettingsView() {
   };
 
   return (
+    <div className="h-full flex flex-col">
+      {/* Header with Logout */}
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center space-x-4">
+          <h1 className="text-2xl font-bold text-gray-800">Settings</h1>
+        </div>
+        <Button
+          onClick={() => {
+            localStorage.removeItem('beverage_pos_auth')
+            window.location.href = '/landing'
+          }}
+          variant="outline"
+          size="sm"
+          className="flex items-center space-x-2 border-red-200 text-red-600 hover:bg-red-50 transition-all duration-200"
+        >
+          <LogOut className="h-4 w-4" />
+          <span>Logout</span>
+        </Button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto scrollbar-hide">
     <Card>
       <CardHeader>
         <CardTitle>Voice Agent Settings</CardTitle>
@@ -806,5 +828,7 @@ export function SettingsView() {
         </div>
       </CardFooter>
     </Card>
+      </div>
+    </div>
   );
 }

@@ -55,16 +55,19 @@ export default function CategoryGrid({ categories, drinks, searchQuery, onAddToO
   if (selectedCategory) {
     return (
       <div className="h-full overflow-hidden">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg sm:text-xl font-semibold text-gray-900">{selectedCategory}</h2>
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h2 className="text-lg font-medium text-gray-900">{selectedCategory}</h2>
+            <div className="w-16 h-px bg-gray-200 mt-2"></div>
+          </div>
           <button
             onClick={() => setSelectedCategory(null)}
-            className="text-blue-600 hover:text-blue-800 font-medium text-sm px-3 py-2 rounded-md hover:bg-blue-50"
+            className="text-gray-500 hover:text-gray-900 text-sm font-medium px-3 py-2 rounded-lg hover:bg-gray-50 transition-colors"
           >
-            ← Back to Categories
+            ← Back
           </button>
         </div>
-        <div className="h-[calc(100%-60px)] overflow-auto">
+        <div className="h-[calc(100%-80px)] overflow-auto">
           <DrinksList drinks={filteredDrinks} addToOrder={onAddToOrder} isLoading={isLoading} />
         </div>
       </div>
@@ -72,35 +75,46 @@ export default function CategoryGrid({ categories, drinks, searchQuery, onAddToO
   }
 
   return (
-    <div className="h-full overflow-hidden flex flex-col p-2 sm:p-4">
-      <h2 className="text-lg sm:text-xl font-semibold text-gray-900 mb-4 flex-shrink-0">Menu Categories</h2>
+    <div className="h-full overflow-hidden flex flex-col p-6">
+      <div className="mb-6">
+        <h2 className="text-lg font-medium text-gray-900">Menu Categories</h2>
+        <div className="w-16 h-px bg-gray-200 mt-2"></div>
+      </div>
+      
       <div className="flex-1 max-w-full">
-        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 h-fit">
+        <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
           {categories.map((category) => {
-            // Get actual count from drinks data
             const actualCount = drinks.filter((drink) => drink.category === category.name).length
             const IconComponent = getCategoryIcon(category.name)
 
             return (
               <Card
                 key={category.name}
-                className={`${category.color} border border-gray-200 cursor-pointer hover:scale-105 active:scale-95 transition-all duration-200 aspect-square hover:shadow-md touch-manipulation`}
+                className="group border-0 bg-white/80 backdrop-blur-sm shadow-sm hover:shadow-md cursor-pointer rounded-xl overflow-hidden transition-all duration-300 hover:bg-white/90"
                 onClick={() => setSelectedCategory(category.name)}
               >
-                <CardContent className="p-4 sm:p-6 h-full flex flex-col justify-center items-center">
-                  <div className="flex flex-col items-center justify-center space-y-3">
-                    <div className={`p-3 sm:p-4 rounded-full ${category.textColor} bg-white bg-opacity-90 shadow-sm`}>
-                      <IconComponent className="h-10 w-10 sm:h-12 sm:w-12" />
+                <CardContent className="p-4 flex flex-col justify-center items-center relative">
+                  {/* Subtle top accent line */}
+                  <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-gray-200 to-transparent"></div>
+                  
+                  <div className="flex flex-col items-center justify-center space-y-2">
+                    <div className="p-2 rounded-lg bg-gray-50 group-hover:bg-gray-100 transition-colors duration-300">
+                      <IconComponent className="h-5 w-5 text-gray-700" />
                     </div>
+                    
                     <div className="text-center">
-                      <h3 className={`text-sm sm:text-base font-semibold ${category.textColor} mb-1 leading-tight`}>
+                      <h3 className="text-xs font-medium text-gray-900 mb-1">
                         {category.name}
                       </h3>
-                      <p className={`${category.textColor} opacity-80 text-xs`}>
+                      <div className="w-6 h-px bg-gray-200 mx-auto mb-1 transition-all duration-300 group-hover:w-8 group-hover:bg-gray-300"></div>
+                      <p className="text-xs text-gray-500">
                         {actualCount > 0 ? actualCount : category.count} items
                       </p>
                     </div>
                   </div>
+
+                  {/* Subtle hover overlay */}
+                  <div className="absolute inset-0 bg-gradient-to-br from-transparent to-gray-50/30 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none rounded-xl"></div>
                 </CardContent>
               </Card>
             )

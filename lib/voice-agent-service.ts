@@ -2,9 +2,7 @@ import db, { drinkCache, inventoryCache, getCachedData, setCachedData, clearCach
 import { drinks, orders, customers, venues, eventBookings, inventory, transactions } from '../db/schema';
 import { eq, like, desc, sql, and, gte, lte } from 'drizzle-orm';
 import type { NewOrder, NewCustomer, NewEventBooking, NewTransaction } from '../db/schema';
-import { performanceMonitor, timeOperation, timed } from './performance-monitor';
 import { inventoryService } from './inventory-service';
-import { simpleInventoryService } from './simple-inventory-service';
 import { paymentService } from './payment-service';
 
 // Cart state management (in-memory for voice sessions)
@@ -64,19 +62,19 @@ export class VoiceAgentService {
         setCachedData(cacheKey, foundDrink, drinkCache);
       }
 
-      // Check inventory using simple inventory check
-      const inventoryInfo = await simpleInventoryService.getDrinkInventory(foundDrink.id);
-      if (!inventoryInfo.success || !inventoryInfo.drink) {
+      // Check inventory using inventory service
+      const inventoryInfo = await inventoryService.getServingInfo(foundDrink.id);
+      if (!inventoryInfo) {
         return {
           success: false,
           message: `Unable to get inventory information for ${foundDrink.name}.`
         };
       }
 
-      if (inventoryInfo.drink.inventory < quantity) {
+      if (inventoryInfo.currentInventory < quantity) {
         return {
           success: false,
-          message: `Sorry, only ${inventoryInfo.drink.inventory} units of ${foundDrink.name} available in stock.`
+          message: `Sorry, only ${inventoryInfo.currentInventory} units of ${foundDrink.name} available in stock.`
         };
       }
 
@@ -217,11 +215,9 @@ export class VoiceAgentService {
         };
       }
 
-      const total = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-
-      // Create order with proper schema
-      const subtotal = Math.floor(total * 0.926); // Approximate subtotal before tax
-      const tax_amount = total - subtotal;
+      const subtotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+      const tax = subtotal * 0.08; // Example 8% tax
+      const total = subtotal + tax;
       
       // Create order with pending status initially
       const orderData: NewOrder = {
@@ -232,7 +228,7 @@ export class VoiceAgentService {
           price: item.price
         })),
         subtotal,
-        tax_amount,
+        tax_amount: tax,
         total,
         status: 'processing',
         payment_status: 'pending'
@@ -249,28 +245,28 @@ export class VoiceAgentService {
         name: item.name
       }));
 
-      const inventoryResult = await simpleInventoryService.updateOrderInventory(
+      const inventoryResult = await inventoryService.processOrderPours(
         newOrder.id,
         cartItems
       );
 
       if (!inventoryResult.success) {
-        console.error('Error processing inventory deductions:', inventoryResult.errors);
+        console.error('Error processing inventory deductions:', inventoryResult.errors || 'Unknown error');
         // Update order status to failed
         await db.update(orders)
           .set({ 
             status: 'cancelled',
-            notes: `Inventory error: ${inventoryResult.errors.join(', ')}`
+            notes: `Inventory error: ${inventoryResult.errors ? inventoryResult.errors.join(', ') : 'Unknown error'}`
           })
           .where(eq(orders.id, newOrder.id));
         
         return {
           success: false,
-          message: `Order failed: ${inventoryResult.errors.join(', ')}`
+          message: `Order failed: ${inventoryResult.errors ? inventoryResult.errors.join(', ') : 'Inventory update failed'}`
         };
       }
 
-      console.log(`✅ Inventory updated successfully for ${inventoryResult.updates.length} items`);
+      console.log(`✅ Inventory updated successfully for ${cartItems.length} items`);
 
       // Process payment automatically (simplified approach for reliability)
       let paymentResult;
@@ -314,13 +310,13 @@ export class VoiceAgentService {
             .set({ 
               status: 'cancelled',
               payment_status: 'failed',
-              notes: `Payment error: ${error.message || 'Payment processing failed'}`
+              notes: `Payment error: ${fallbackError instanceof Error ? fallbackError.message : 'Payment processing failed'}`
             })
             .where(eq(orders.id, newOrder.id));
           
           return {
             success: false,
-            message: `Payment failed: ${error.message || 'Payment processing failed'}`
+            message: `Payment failed: ${fallbackError instanceof Error ? fallbackError.message : 'Payment processing failed'}`
           };
         }
       }
@@ -411,7 +407,7 @@ export class VoiceAgentService {
 
       return {
         success: true,
-        drinks: results.rows.map(drink => ({
+        drinks: results.rows.map((drink: any) => ({
           id: drink.id,
           name: drink.name,
           category: drink.category,
@@ -445,7 +441,7 @@ export class VoiceAgentService {
           };
         }
 
-        const inventoryInfo = await simpleInventoryService.getDrinkInventory(drink.id);
+        const inventoryInfo = await inventoryService.getRealTimeInventoryStatus(drink.id);
         if (!inventoryInfo.success || !inventoryInfo.drink) {
           return {
             success: false,
@@ -651,7 +647,7 @@ export class VoiceAgentService {
         customer_id: customer.id,
         venue_id: venue[0].id,
         guest_count,
-        event_date: new Date(event_date),
+        event_date: event_date, // date string in YYYY-MM-DD format
         status: 'confirmed',
         notes: `Package: ${packageName}`
       };

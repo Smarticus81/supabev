@@ -1708,7 +1708,7 @@ Remember: Create the perfect illusion of instant response while maintaining natu
               tool: backendTool,
               parameters: {
                 ...parsedArguments,
-                clientId: 'default' // Add consistent client ID
+                clientId: 'default' // 🎯 FIXED: Use consistent 'default' instead of undefined
               }
             })
           })

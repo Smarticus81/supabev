@@ -1,15 +1,19 @@
 #!/usr/bin/env node
 
 require('dotenv').config({ path: require('path').resolve(__dirname, '..', '.env') });
-const { neon } = require('@neondatabase/serverless');
-const { drizzle } = require('drizzle-orm/neon-http');
+const postgres = require('postgres');
+const { drizzle } = require('drizzle-orm/postgres-js');
 const { eq, like, desc, sql, and, gte, lte } = require('drizzle-orm');
 
 class MCPServer {
     constructor() {
-        // Initialize Neon database connection
-        const sqlConnection = neon(process.env.DATABASE_URL);
-        this.db = drizzle(sqlConnection);
+        // Initialize Supabase database connection
+        const client = postgres(process.env.DATABASE_URL, {
+            prepare: false,
+            ssl: 'require',
+        });
+        this.db = drizzle(client);
+        this.client = client; // Store client for cleanup
         
         this.cartStorage = new Map(); // In-memory cart storage by clientId
         this.paymentMethods = new Map(); // In-memory payment methods by clientId
@@ -71,7 +75,6 @@ class MCPServer {
     async processRequest(requestStr) {
         try {
             const request = JSON.parse(requestStr);
-            // process.stderr.write(`Processing request: ${requestStr}\n`);
             
             const { action, name, params, requestId } = request;
             
@@ -94,8 +97,6 @@ class MCPServer {
 
     async invokeTool(toolName, params) {
         try {
-            // process.stderr.write(`Invoking tool: ${toolName} with params: ${JSON.stringify(params)}\n`);
-            
             switch (toolName) {
                 case 'check_inventory':
                     return await this.checkInventory(params);
@@ -108,9 +109,15 @@ class MCPServer {
                 case 'cart_remove':
                     return this.cartRemove(params);
                 case 'cart_view':
-                    return this.cartView(params);
+                    // Voice agent compatibility - always ensure default clientId
+                    return this.cartView({
+                        clientId: params.clientId || 'default'
+                    });
                 case 'cart_clear':
-                    return this.cartClear(params);
+                    // Voice agent compatibility - always ensure default clientId
+                    return this.cartClear({
+                        clientId: params.clientId || 'default'
+                    });
                 case 'cart_create_order':
                     return this.cartCreateOrder(params);
                 case 'create_order':
@@ -131,19 +138,64 @@ class MCPServer {
                     return this.paymentSelect(params);
                 case 'payment_process':
                     return this.paymentProcess(params);
-                
+
                 // Advanced inventory tools
                 case 'update_drink_inventory':
                     return await this.updateDrinkInventory(params);
+                case 'set_drink_inventory':
+                    return await this.setDrinkInventory(params);
                 case 'bulk_update_inventory':
                     return await this.bulkUpdateInventory(params);
                 case 'get_low_inventory_bottles':
                     return await this.getLowInventoryBottles(params);
-                
+
+                // Alias for voice commands
+                case 'set_inventory':
+                    return await this.setDrinkInventory({
+                        drink_name: params.drink_name,
+                        new_inventory: params.quantity || params.new_inventory,
+                        reason: params.reason || 'Voice inventory update'
+                    });
+
                 // Drink menu management
                 case 'create_drink':
                     return await this.createDrink(params);
                 
+                // Voice agent compatibility functions - FIXED VERSION
+                case 'add_drink_to_cart':
+                    return await this.cartAdd({
+                        clientId: params.clientId || 'default', // Ensure default clientId
+                        drink_name: params.drink_name,
+                        serving_name: params.serving_name || 'bottle',
+                        quantity: params.quantity || 1
+                    });
+                case 'search_drinks':
+                    return await this.searchDrinks(params);
+                case 'remove_drink_from_cart':
+                    return this.cartRemove({
+                        clientId: params.clientId || 'default', // Ensure default clientId
+                        drink_name: params.drink_name,
+                        quantity: params.quantity
+                    });
+                case 'process_order':
+                    return await this.cartCreateOrder({
+                        clientId: params.clientId || 'default', // Ensure default clientId
+                        customer_name: params.customer_name
+                    });
+                case 'clear_cart':
+                    return this.cartClear({
+                        clientId: params.clientId || 'default' // Ensure default clientId
+                    });
+                case 'list_drinks':
+                    return this.viewMenu(params);
+                case 'get_drink':
+                    return await this.getDrink(params);
+                case 'get_inventory_status':
+                    return await this.checkInventory(params);
+                case 'cart_view':
+                    return this.cartView({
+                        clientId: params.clientId || 'default' // Ensure default clientId
+                    });
                 default:
                     throw new Error(`Unknown tool: ${toolName}`);
             }
@@ -152,6 +204,8 @@ class MCPServer {
             return { error: error.message };
         }
     }
+
+    // --- INVENTORY FUNCTIONS (comprehensive fix) ---
 
     async checkInventory(params) {
         const { drink_name } = params;
@@ -162,20 +216,38 @@ class MCPServer {
 
         try {
             const result = await this.db.execute(
-                sql`SELECT * FROM drinks WHERE LOWER(name) = LOWER(${drink_name}) LIMIT 1`
+                sql`SELECT id, name, inventory, category, subcategory, price 
+                    FROM drinks 
+                    WHERE LOWER(name) = LOWER(${drink_name}) 
+                    AND (is_active IS NULL OR is_active = true)
+                    LIMIT 1`
             );
             
-            if (!result.rows || result.rows.length === 0) {
-                return { error: `Drink "${drink_name}" not found in inventory` };
+            const rows = result.rows || result || [];
+            if (rows.length === 0) {
+                return { 
+                    success: false,
+                    error: `Drink "${drink_name}" not found in inventory` 
+                };
             }
 
+            const drink = rows[0];
             return {
-                ...result.rows[0],
-                success: true
+                success: true,
+                id: drink.id,
+                name: drink.name,
+                inventory: parseInt(drink.inventory) || 0,
+                category: drink.category,
+                subcategory: drink.subcategory,
+                price: drink.price,
+                message: `Current inventory for ${drink.name}: ${drink.inventory} units`
             };
         } catch (error) {
             process.stderr.write(`Database error in checkInventory: ${error}\n`);
-            return { error: 'Database error while checking inventory' };
+            return { 
+                success: false,
+                error: `Database error while checking inventory: ${error.message}` 
+            };
         }
     }
 
@@ -183,39 +255,68 @@ class MCPServer {
         const { drink_name, quantity } = params;
         
         if (!drink_name || quantity === undefined) {
-            return { error: 'drink_name and quantity are required' };
+            return { 
+                success: false,
+                error: 'drink_name and quantity are required' 
+            };
         }
 
         if (quantity === 0) {
-            return { error: 'quantity must be non-zero' };
+            return { 
+                success: false,
+                error: 'quantity must be non-zero' 
+            };
         }
 
         try {
             // First check if drink exists
             const drinkResult = await this.db.execute(
-                sql`SELECT * FROM drinks WHERE LOWER(name) = LOWER(${drink_name}) LIMIT 1`
+                sql`SELECT id, name, inventory, category, subcategory 
+                    FROM drinks 
+                    WHERE LOWER(name) = LOWER(${drink_name}) 
+                    AND (is_active IS NULL OR is_active = true)
+                    LIMIT 1`
             );
             
-            if (!drinkResult.rows || drinkResult.rows.length === 0) {
-                return { error: `Drink "${drink_name}" not found` };
+            const drinkRows = drinkResult.rows || drinkResult || [];
+            if (drinkRows.length === 0) {
+                return { 
+                    success: false,
+                    error: `Drink "${drink_name}" not found` 
+                };
             }
 
-            const drink = drinkResult.rows[0];
+            const drink = drinkRows[0];
             
-            // Calculate new inventory (assuming inventory is in units)
-            const currentInventory = drink.inventory || 0;
-            const newInventory = currentInventory + quantity;
+            // Calculate new inventory - ensure proper integer handling
+            const currentInventory = parseInt(drink.inventory) || 0;
+            const quantityToAdd = parseInt(quantity);
+            const newInventory = currentInventory + quantityToAdd;
 
             if (newInventory < 0) {
-                return { error: 'Cannot adjust inventory below zero' };
+                return { 
+                    success: false,
+                    error: `Cannot adjust inventory below zero. Current: ${currentInventory}, Change: ${quantityToAdd}` 
+                };
             }
 
-            // Update inventory
-            await this.db.execute(
-                sql`UPDATE drinks SET inventory = ${newInventory} WHERE LOWER(name) = LOWER(${drink_name})`
+            // Update inventory using the drink's ID for precision
+            const updateResult = await this.db.execute(
+                sql`UPDATE drinks 
+                    SET inventory = ${newInventory}, updated_at = CURRENT_TIMESTAMP 
+                    WHERE id = ${drink.id}
+                    RETURNING inventory`
             );
             
-            // Determine unit name
+            // Verify the update worked
+            if (!updateResult.rows || updateResult.rows.length === 0) {
+                return {
+                    success: false,
+                    error: 'Failed to update inventory in database'
+                };
+            }
+            
+            // Determine unit name based on category
             let unitName = 'bottles';
             if (drink.category === 'Beer' && drink.subcategory === 'Hard Seltzer') {
                 unitName = 'cans';
@@ -225,25 +326,287 @@ class MCPServer {
                 unitName = 'cans';
             }
 
-            const action = quantity > 0 ? 'Added' : 'Deducted';
-            const absQuantity = Math.abs(quantity);
+            const action = quantityToAdd > 0 ? 'Added' : 'Deducted';
+            const absQuantity = Math.abs(quantityToAdd);
 
             return {
                 success: true,
                 drink_name: drink.name,
+                drink_id: drink.id,
                 units_adjusted: absQuantity,
-                total_units: newInventory,
+                previous_inventory: currentInventory,
+                new_inventory: newInventory,
                 unit_name: unitName,
-                message: `${action} ${absQuantity} ${unitName} of ${drink.name} in inventory`
+                message: `Successfully ${action.toLowerCase()} ${absQuantity} ${unitName} of ${drink.name}. New total: ${newInventory} ${unitName}`
             };
         } catch (error) {
             process.stderr.write(`Database error in addInventory: ${error}\n`);
-            return { error: 'Database error while adjusting inventory' };
+            return { 
+                success: false,
+                error: `Database error while adjusting inventory: ${error.message}` 
+            };
         }
     }
 
+    async updateDrinkInventory(params) {
+        const { drink_name, quantity_change, reason = 'Voice inventory update' } = params;
+        
+        if (!drink_name || quantity_change === undefined) {
+            return { 
+                success: false,
+                error: 'drink_name and quantity_change are required' 
+            };
+        }
+        
+        try {
+            // Find the drink first
+            const drinkResult = await this.db.execute(
+                sql`SELECT id, name, inventory, category, subcategory 
+                    FROM drinks 
+                    WHERE LOWER(name) = LOWER(${drink_name}) 
+                    AND (is_active IS NULL OR is_active = true)
+                    LIMIT 1`
+            );
+
+            const drinkRows = drinkResult.rows || drinkResult || [];
+            if (drinkRows.length === 0) {
+                return { 
+                    success: false, 
+                    error: `Drink "${drink_name}" not found in inventory` 
+                };
+            }
+
+            const drink = drinkRows[0];
+            const currentInventory = parseInt(drink.inventory) || 0;
+            const changeAmount = parseInt(quantity_change);
+            const newInventory = Math.max(0, currentInventory + changeAmount);
+            
+            // Update the specific drink record
+            const updateResult = await this.db.execute(
+                sql`UPDATE drinks 
+                    SET inventory = ${newInventory}, updated_at = CURRENT_TIMESTAMP 
+                    WHERE id = ${drink.id}
+                    RETURNING inventory`
+            );
+            
+            const updateRows = updateResult.rows || updateResult || [];
+            // Verify the update worked
+            if (updateRows.length === 0) {
+                return {
+                    success: false,
+                    error: 'Failed to update inventory in database'
+                };
+            }
+
+            const finalInventory = parseInt(updateRows[0].inventory);
+            
+            // Log the successful update for debugging
+            process.stderr.write(`Successfully updated ${drink.name} inventory from ${currentInventory} to ${finalInventory}\n`);
+            
+            return {
+                success: true,
+                message: `Successfully updated ${drink.name} inventory to ${finalInventory} units`,
+                drink_name: drink.name,
+                drink_id: drink.id,
+                previous_inventory: currentInventory,
+                new_inventory: finalInventory,
+                change: changeAmount,
+                reason: reason
+            };
+        } catch (error) {
+            process.stderr.write(`Error in updateDrinkInventory: ${error}\n`);
+            return { 
+                success: false, 
+                error: `Failed to update inventory: ${error.message}` 
+            };
+        }
+    }
+
+    // Alternative function that sets inventory to an absolute value instead of relative change
+    async setDrinkInventory(params) {
+        const { drink_name, new_inventory, reason = 'Inventory set to absolute value' } = params;
+        
+        if (!drink_name || new_inventory === undefined) {
+            return { 
+                success: false,
+                error: 'drink_name and new_inventory are required' 
+            };
+        }
+        
+        const newInventoryInt = parseInt(new_inventory);
+        if (newInventoryInt < 0) {
+            return {
+                success: false,
+                error: 'new_inventory cannot be negative'
+            };
+        }
+        
+        try {
+            // Find the drink first
+            const drinkResult = await this.db.execute(
+                sql`SELECT id, name, inventory, category, subcategory 
+                    FROM drinks 
+                    WHERE LOWER(name) = LOWER(${drink_name}) 
+                    AND (is_active IS NULL OR is_active = true)
+                    LIMIT 1`
+            );
+
+            const drinkRows = drinkResult.rows || drinkResult || [];
+            if (drinkRows.length === 0) {
+                return { 
+                    success: false, 
+                    error: `Drink "${drink_name}" not found in inventory` 
+                };
+            }
+
+            const drink = drinkRows[0];
+            const currentInventory = parseInt(drink.inventory) || 0;
+            
+            // Set the inventory to the absolute value
+            const updateResult = await this.db.execute(
+                sql`UPDATE drinks 
+                    SET inventory = ${newInventoryInt}, updated_at = CURRENT_TIMESTAMP 
+                    WHERE id = ${drink.id}
+                    RETURNING inventory`
+            );
+            
+            const updateRows = updateResult.rows || updateResult || [];
+            // Verify the update worked
+            if (updateRows.length === 0) {
+                return {
+                    success: false,
+                    error: 'Failed to set inventory in database'
+                };
+            }
+
+            const finalInventory = parseInt(updateRows[0].inventory);
+            
+            // Log the successful update for debugging
+            process.stderr.write(`Successfully set ${drink.name} inventory from ${currentInventory} to ${finalInventory}\n`);
+            
+            return {
+                success: true,
+                message: `Successfully set ${drink.name} inventory to ${finalInventory} units`,
+                drink_name: drink.name,
+                drink_id: drink.id,
+                previous_inventory: currentInventory,
+                new_inventory: finalInventory,
+                change: finalInventory - currentInventory,
+                reason: reason
+            };
+        } catch (error) {
+            process.stderr.write(`Error in setDrinkInventory: ${error}\n`);
+            return { 
+                success: false, 
+                error: `Failed to set inventory: ${error.message}` 
+            };
+        }
+    }
+
+    async bulkUpdateInventory(params) {
+        const { updates } = params;
+        
+        if (!updates || !Array.isArray(updates)) {
+            return { 
+                success: false, 
+                error: 'updates array is required' 
+            };
+        }
+        
+        const results = [];
+        let successCount = 0;
+        let failureCount = 0;
+        
+        for (const update of updates) {
+            try {
+                // Use setDrinkInventory if new_inventory is provided, otherwise use updateDrinkInventory
+                let result;
+                if (update.new_inventory !== undefined) {
+                    result = await this.setDrinkInventory(update);
+                } else {
+                    result = await this.updateDrinkInventory(update);
+                }
+                
+                results.push({
+                    drink_name: update.drink_name,
+                    ...result
+                });
+                
+                if (result.success) {
+                    successCount++;
+                } else {
+                    failureCount++;
+                }
+            } catch (error) {
+                results.push({
+                    drink_name: update.drink_name,
+                    success: false,
+                    error: error.message
+                });
+                failureCount++;
+            }
+        }
+        
+        return {
+            success: successCount > 0,
+            message: `Bulk inventory update completed: ${successCount} successful, ${failureCount} failed`,
+            results,
+            summary: {
+                total: updates.length,
+                successful: successCount,
+                failed: failureCount
+            }
+        };
+    }
+
+    async getLowInventoryBottles(params) {
+        const { threshold = 5 } = params;
+        
+        try {
+            // Simplified query to avoid complex aggregation issues
+            const result = await this.db.execute(
+                sql`SELECT id, name, inventory, category, subcategory, price
+                    FROM drinks 
+                    WHERE (is_active IS NULL OR is_active = true)
+                    AND inventory <= ${threshold}
+                    ORDER BY inventory ASC, name ASC`
+            );
+            
+            const lowInventoryDrinks = result.rows || [];
+            
+            return {
+                success: true,
+                low_inventory_drinks: lowInventoryDrinks.map(drink => ({
+                    ...drink,
+                    inventory: parseInt(drink.inventory) || 0
+                })),
+                count: lowInventoryDrinks.length,
+                threshold,
+                message: `Found ${lowInventoryDrinks.length} drinks with inventory at or below ${threshold} units`
+            };
+        } catch (error) {
+            process.stderr.write(`Error in getLowInventoryBottles: ${error}\n`);
+            return { 
+                success: false, 
+                error: `Failed to get low inventory items: ${error.message}` 
+            };
+        }
+    }
+
+    // --- END INVENTORY FUNCTIONS ---
+
+    // DEBUG LOGGING ADDED
     async cartAdd(params) {
         const { clientId, drink_name, quantity = 1, serving_name = 'bottle' } = params;
+        
+        // 🎯 DEBUG LOGGING
+        console.log('🛒 MCP cartAdd called with:', {
+            clientId: clientId,
+            clientIdType: typeof clientId,
+            drink_name,
+            quantity,
+            serving_name
+        });
         
         if (!clientId || !drink_name) {
             return { error: 'clientId and drink_name are required' };
@@ -255,18 +618,23 @@ class MCPServer {
                 sql`SELECT name, price FROM drinks WHERE LOWER(name) = LOWER(${drink_name}) LIMIT 1`
             );
             
-            if (!drinkResult.rows || drinkResult.rows.length === 0) {
+            const drinkRows = drinkResult.rows || drinkResult || [];
+            if (drinkRows.length === 0) {
                 return { error: `Drink "${drink_name}" not found` };
             }
 
-            const drink = drinkResult.rows[0];
+            const drink = drinkRows[0];
 
             // Get or create cart for client
             if (!this.cartStorage.has(clientId)) {
+                console.log('🆕 Creating new cart for clientId:', clientId);
                 this.cartStorage.set(clientId, []);
+            } else {
+                console.log('📦 Using existing cart for clientId:', clientId);
             }
             
             const cart = this.cartStorage.get(clientId);
+            console.log('🛒 Current cart before adding:', cart);
             
             // Check if item already in cart
             const existingItem = cart.find(item => 
@@ -276,22 +644,29 @@ class MCPServer {
             
             if (existingItem) {
                 existingItem.quantity += quantity;
+                console.log('📈 Updated existing item quantity:', existingItem);
             } else {
-                cart.push({
+                const newItem = {
                     drink_name: drink.name,
                     quantity,
                     price: drink.price,
                     serving_name
-                });
+                };
+                cart.push(newItem);
+                console.log('➕ Added new item to cart:', newItem);
             }
+
+            console.log('🛒 Cart after adding:', cart);
+            console.log('🗂️ All cart storage keys:', Array.from(this.cartStorage.keys()));
 
             return {
                 success: true,
                 message: `Added ${quantity} ${drink.name} to cart`,
-                cart: [...cart] // Return copy of cart
+                cart: [...cart], // Return copy of cart
+                clientId: clientId // Return clientId for verification
             };
         } catch (error) {
-            process.stderr.write(`Error in cartAdd: ${error}\n`);
+            console.error('❌ Error in cartAdd:', error);
             return { error: 'Failed to add item to cart' };
         }
     }
@@ -433,7 +808,7 @@ class MCPServer {
         }
     }
 
-    cartCreateOrder(params) {
+    async cartCreateOrder(params) {
         const { clientId, customer_name } = params;
         
         if (!clientId) {
@@ -450,8 +825,8 @@ class MCPServer {
             // Get payment method if selected
             const payment_method = this.paymentMethods.get(clientId) || 'cash';
 
-            // Create order from cart
-            const result = this.createOrder({
+            // Create order from cart (await the async function)
+            const result = await this.createOrder({
                 items: cart,
                 customer_name,
                 payment_method
@@ -477,78 +852,109 @@ class MCPServer {
             return { error: 'items array is required and cannot be empty' };
         }
 
+        // Use a transaction with proper error handling for PostgreSQL
         try {
-            // Begin transaction
-            await this.db.execute(sql`BEGIN`);
-
-            try {
+            const result = await this.client.begin(async db => {
                 // Check stock for all items
                 for (const item of items) {
-                    const drinkResult = await this.db.execute(
-                        sql`SELECT name, inventory FROM drinks WHERE LOWER(name) = LOWER(${item.drink_name})`
-                    );
+                    const drinkResult = await db`
+                        SELECT name, inventory, price FROM drinks 
+                        WHERE LOWER(name) = LOWER(${item.drink_name})
+                    `;
                     
-                    if (!drinkResult.rows || drinkResult.rows.length === 0) {
+                    if (drinkResult.length === 0) {
                         throw new Error(`Drink "${item.drink_name}" not found`);
                     }
                     
-                    const drink = drinkResult.rows[0];
+                    const drink = drinkResult[0];
                     if (drink.inventory < item.quantity) {
                         throw new Error(`Insufficient stock for ${item.drink_name}: need ${item.quantity} but only ${drink.inventory} available`);
                     }
                 }
 
-                // Calculate totals
-                const subtotal = items.reduce((sum, item) => sum + (item.quantity * item.price), 0);
+                // Calculate totals (use prices from database)
+                let subtotal = 0;
+                for (const item of items) {
+                    const drinkResult = await db`
+                        SELECT price FROM drinks WHERE LOWER(name) = LOWER(${item.drink_name})
+                    `;
+                    const price = parseFloat(drinkResult[0].price);
+                    subtotal += item.quantity * price;
+                }
+                
                 const tax = subtotal * 0.08; // 8% tax
                 const total = subtotal + tax;
 
-                // Create order in database
-                const orderResult = await this.db.execute(
-                    sql`INSERT INTO orders (customer_name, total_amount, status, payment_method) 
-                        VALUES (${customer_name}, ${total}, 'completed', ${payment_method}) 
-                        RETURNING id`
-                );
-                
-                const orderId = orderResult.rows[0].id;
-
-                // Add order items
+                // Prepare items for JSON storage BEFORE creating order
+                const orderItems = [];
                 for (const item of items) {
-                    await this.db.execute(
-                        sql`INSERT INTO order_items (order_id, drink_name, quantity, price, serving_name)
-                            VALUES (${orderId}, ${item.drink_name}, ${item.quantity}, ${item.price}, ${item.serving_name || 'bottle'})`
-                    );
+                    const drinkResult = await db`
+                        SELECT price FROM drinks WHERE LOWER(name) = LOWER(${item.drink_name})
+                    `;
+                    const price = parseFloat(drinkResult[0].price);
+                    
+                    orderItems.push({
+                        name: item.drink_name,
+                        quantity: item.quantity,
+                        price: price,
+                        total: price * item.quantity
+                    });
                 }
+
+                // Create order in database WITH items included
+                const orderResult = await db`
+                    INSERT INTO orders (
+                        customer_id, subtotal, tax_amount, total, 
+                        payment_method, payment_status, status,
+                        order_number, items, created_at
+                    ) 
+                    VALUES (
+                        null, ${subtotal}, ${tax}, ${total},
+                        ${payment_method}, 'completed', 'completed',
+                        'ORD-' || extract(epoch from now())::bigint, ${JSON.stringify(orderItems)}, now()
+                    ) 
+                    RETURNING id, order_number
+                `;
+                
+                const orderId = orderResult[0].id;
+                const orderNumber = orderResult[0].order_number;
 
                 // Deduct inventory
                 for (const item of items) {
-                    await this.db.execute(
-                        sql`UPDATE drinks 
-                            SET inventory = inventory - ${item.quantity}
-                            WHERE LOWER(name) = LOWER(${item.drink_name})`
-                    );
+                    await db`
+                        UPDATE drinks 
+                        SET inventory = inventory - ${item.quantity}
+                        WHERE LOWER(name) = LOWER(${item.drink_name})
+                    `;
                 }
 
-                // Commit transaction
-                await this.db.execute(sql`COMMIT`);
-
                 return {
-                    success: true,
-                    order_id: orderId,
+                    orderId,
+                    orderNumber,
                     subtotal: subtotal.toFixed(2),
                     tax: tax.toFixed(2),
                     total: total.toFixed(2),
-                    payment_method,
-                    message: `Order ${orderId} created and inventory updated successfully`
+                    payment_method
                 };
-            } catch (error) {
-                // Rollback on error
-                await this.db.execute(sql`ROLLBACK`);
-                throw error;
-            }
+            });
+
+            return {
+                success: true,
+                order_id: result.orderId,
+                order_number: result.orderNumber,
+                subtotal: result.subtotal,
+                tax: result.tax,
+                total: result.total,
+                payment_method: result.payment_method,
+                message: `Order ${result.orderNumber} created and inventory updated successfully`
+            };
+
         } catch (error) {
-            process.stderr.write(`Transaction error in createOrder: ${error}\n`);
-            return { error: error.message };
+            console.error(`Transaction error in createOrder: ${error}`);
+            return { 
+                success: false,
+                error: `Failed to create order: ${error.message}` 
+            };
         }
     }
 
@@ -718,7 +1124,7 @@ class MCPServer {
         
         try {
             // For now, just return success since we're using in-memory config
-            // In a production system, you would save this to NeonDB if needed
+            // In a production system, you would save this to Supabase if needed
             return { success: true };
         } catch (error) {
             return { error: 'Failed to set TTS config' };
@@ -755,106 +1161,6 @@ class MCPServer {
             method,
             message: 'Payment processed successfully'
         };
-    }
-
-    // Advanced inventory management tools
-    async updateDrinkInventory(params) {
-        const { drink_name, quantity_change, reason = 'Voice inventory update' } = params;
-        
-        try {
-            // Use the consolidated inventory function to get current total
-            const currentResult = await this.db.execute(
-                sql`SELECT * FROM get_drink_inventory(${drink_name})`
-            );
-            
-            if (!currentResult.rows.length) {
-                return { success: false, error: 'Drink not found' };
-            }
-            
-            const currentDrink = currentResult.rows[0];
-            const newTotalInventory = Math.max(0, currentDrink.total_inventory + quantity_change);
-            
-            // For simplicity, update the first entry with the new total inventory
-            // and set others to 0 (consolidation approach)
-            const firstDrinkResult = await this.db.execute(
-                sql`SELECT id FROM drinks WHERE LOWER(name) = LOWER(${drink_name}) AND is_active = true ORDER BY created_at ASC LIMIT 1`
-            );
-            
-            if (firstDrinkResult.rows.length > 0) {
-                const firstDrinkId = firstDrinkResult.rows[0].id;
-                
-                // Set all other entries to 0
-                await this.db.execute(
-                    sql`UPDATE drinks SET inventory = 0 WHERE LOWER(name) = LOWER(${drink_name}) AND id != ${firstDrinkId} AND is_active = true`
-                );
-                
-                // Set the first entry to the new total
-                await this.db.execute(
-                    sql`UPDATE drinks SET inventory = ${newTotalInventory}, updated_at = NOW() WHERE id = ${firstDrinkId}`
-                );
-            }
-            
-            return {
-                success: true,
-                message: `Updated ${drink_name} inventory`,
-                previous_inventory: currentDrink.total_inventory,
-                new_inventory: newTotalInventory,
-                change: quantity_change
-            };
-        } catch (error) {
-            return { success: false, error: error.message };
-        }
-    }
-
-    async bulkUpdateInventory(params) {
-        const { updates } = params;
-        const results = [];
-        
-        for (const update of updates) {
-            const result = await this.updateDrinkInventory(update);
-            results.push({
-                drink_name: update.drink_name,
-                ...result
-            });
-        }
-        
-        return {
-            success: true,
-            message: 'Bulk inventory update completed',
-            results,
-            updated: results.filter(r => r.success).length,
-            failed: results.filter(r => !r.success).length
-        };
-    }
-
-    async getLowInventoryBottles(params) {
-        const { threshold = 5 } = params;
-        
-        try {
-            // Use consolidated inventory to avoid duplicates
-            const result = await this.db.execute(
-                sql`
-                    SELECT 
-                        name, 
-                        SUM(inventory) as inventory,
-                        category
-                    FROM drinks 
-                    WHERE is_active = true
-                    GROUP BY name, category
-                    HAVING SUM(inventory) <= ${threshold}
-                    ORDER BY SUM(inventory) ASC
-                `
-            );
-            
-            return {
-                success: true,
-                low_inventory_drinks: result.rows,
-                count: result.rows.length,
-                threshold
-            };
-        } catch (error) {
-            return { success: false, error: error.message };
-        }
     }
 
     async createDrink(params) {
@@ -963,6 +1269,125 @@ class MCPServer {
         }
     }
 
+    async searchDrinks(params) {
+        const { query, category, max_results = 10 } = params;
+        
+        try {
+            let dbQuery;
+            
+            if (query && category) {
+                // Search by both query and category
+                const searchPattern = `%${query.toLowerCase()}%`;
+                dbQuery = sql`
+                    SELECT name, category, subcategory, price, inventory
+                    FROM drinks 
+                    WHERE is_active = true 
+                    AND LOWER(category) = LOWER(${category})
+                    AND (LOWER(name) LIKE ${searchPattern} OR LOWER(subcategory) LIKE ${searchPattern})
+                    ORDER BY category, name
+                    LIMIT ${max_results}
+                `;
+            } else if (query) {
+                // Search by query only
+                const searchPattern = `%${query.toLowerCase()}%`;
+                dbQuery = sql`
+                    SELECT name, category, subcategory, price, inventory
+                    FROM drinks 
+                    WHERE is_active = true 
+                    AND (LOWER(name) LIKE ${searchPattern} OR LOWER(category) LIKE ${searchPattern} OR LOWER(subcategory) LIKE ${searchPattern})
+                    ORDER BY category, name
+                    LIMIT ${max_results}
+                `;
+            } else if (category) {
+                // Filter by category only
+                dbQuery = sql`
+                    SELECT name, category, subcategory, price, inventory
+                    FROM drinks 
+                    WHERE is_active = true 
+                    AND LOWER(category) = LOWER(${category})
+                    ORDER BY name
+                    LIMIT ${max_results}
+                `;
+            } else {
+                // Return all drinks
+                dbQuery = sql`
+                    SELECT name, category, subcategory, price, inventory
+                    FROM drinks 
+                    WHERE is_active = true 
+                    ORDER BY category, name
+                    LIMIT ${max_results}
+                `;
+            }
+            
+            const result = await this.db.execute(dbQuery);
+            const drinks = result.rows || result || [];
+            
+            return {
+                success: true,
+                drinks: drinks,
+                total_found: drinks.length,
+                search_query: query,
+                category_filter: category
+            };
+        } catch (error) {
+            process.stderr.write(`Error in searchDrinks: ${error}\n`);
+            return { 
+                success: false, 
+                error: `Failed to search drinks: ${error.message}` 
+            };
+        }
+    }
+
+    async getDrink(params) {
+        const { id, name } = params;
+        
+        try {
+            let result;
+            
+            if (id) {
+                result = await this.db.execute(
+                    sql`SELECT * FROM drinks WHERE id = ${id} LIMIT 1`
+                );
+            } else if (name) {
+                result = await this.db.execute(
+                    sql`SELECT * FROM drinks WHERE LOWER(name) LIKE LOWER(${`%${name}%`}) LIMIT 1`
+                );
+            } else {
+                return {
+                    success: false,
+                    error: 'Either id or name parameter is required'
+                };
+            }
+            
+            if (!result.rows || result.rows.length === 0) {
+                return {
+                    success: false,
+                    error: `Drink not found with ${id ? 'id: ' + id : 'name: ' + name}`
+                };
+            }
+            
+            const drink = result.rows[0];
+            
+            // Add serving options for compatibility
+            drink.serving_options = [{
+                name: drink.unit_type || 'serving',
+                volume_oz: drink.serving_size_oz || 1,
+                price: drink.price
+            }];
+            
+            return {
+                success: true,
+                drink: drink
+            };
+        } catch (error) {
+            process.stderr.write(`Error in getDrink: ${error}\n`);
+            return { 
+                success: false, 
+                error: `Failed to get drink: ${error.message}` 
+            };
+        }
+    }
+
     sendResponse(response) {
         try {
             const responseStr = JSON.stringify(response);
@@ -979,8 +1404,10 @@ class MCPServer {
     }
 
     cleanup() {
-        // Neon database connections are handled automatically
-        // No manual cleanup needed
+        // Close Supabase database connection
+        if (this.client) {
+            this.client.end();
+        }
         process.stderr.write('Cleaning up MCP server\n');
     }
 }

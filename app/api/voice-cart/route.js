@@ -1,97 +1,180 @@
-import { NextResponse } from 'next/server';
-import { invoke } from '../../../lib/tools';
+import { eventManager } from '../realtime/route'
+
+const MCP_SERVER_URL = 'http://localhost:7865'
+
+async function callMCPServer(action, params = {}) {
+  try {
+    const response = await fetch(MCP_SERVER_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        action,
+        ...params
+      }),
+      timeout: 5000
+    })
+
+    if (!response.ok) {
+      throw new Error(`MCP Server error: ${response.status}`)
+    }
+
+    const result = await response.json()
+    return result
+  } catch (error) {
+    console.error('MCP Server call failed:', error)
+    throw error
+  }
+}
 
 export async function GET() {
   try {
-    const result = await invoke('cart_view', { clientId: 'default' });
+    const cartResult = await callMCPServer('cart_get')
     
-    if (result.cart && result.cart.length > 0) {
-      const uiCartItems = [];
-      let total = 0;
-      
-      for (const item of result.cart) {
-        // Try to get real price from database
-        try {
-          const db = (await import('../../../db/index')).default;
-          const { sql } = await import('drizzle-orm');
-          
-          const drinkResult = await db.execute(
-            sql`
-              SELECT 
-                MIN(id) as id,
-                name,
-                MIN(price) as price
-              FROM drinks 
-              WHERE LOWER(name) = LOWER(${item.drink_name})
-              AND is_active = true
-              GROUP BY name
-              LIMIT 1
-            `
-          );
-          
-          if (drinkResult.rows.length > 0) {
-            const drink = drinkResult.rows[0];
-            const itemTotal = (drink.price * item.quantity) / 100; // Convert cents to dollars
-            
-            uiCartItems.push({
-              id: drink.id.toString(),
-              name: item.drink_name,
-              price: drink.price / 100, // Convert cents to dollars
-              quantity: item.quantity
-            });
-            
-            total += itemTotal;
-          } else {
-            // Fallback to default price
-            uiCartItems.push({
-              id: item.drink_name,
-              name: item.drink_name,
-              price: 5.00,
-              quantity: item.quantity
-            });
-            total += 5.00 * item.quantity;
-          }
-        } catch (error) {
-          console.error('Error getting drink price for', item.drink_name, error);
-          // Fallback to default price
-          uiCartItems.push({
-            id: item.drink_name,
-            name: item.drink_name,
-            price: 5.00,
-            quantity: item.quantity
-          });
-          total += 5.00 * item.quantity;
-        }
-      }
-      
-      return NextResponse.json({
+    if (cartResult.success) {
+      return Response.json({
         success: true,
-        items: uiCartItems,
-        total: total
-      });
+        cart: cartResult.cart || { items: [], total: 0 },
+        items: cartResult.cart?.items || []
+      })
     } else {
-      return NextResponse.json({
-        success: true,
-        items: [],
-        total: 0
-      });
+      return Response.json({ 
+        success: false, 
+        error: cartResult.error || 'Failed to get cart',
+        cart: { items: [], total: 0 },
+        items: []
+      })
     }
   } catch (error) {
-    console.error('Error getting voice cart:', error);
-    return NextResponse.json({ 
+    console.error('Error in voice-cart GET:', error)
+    return Response.json({ 
       success: false, 
-      items: [], 
-      total: 0 
-    });
+      error: 'Internal server error',
+      cart: { items: [], total: 0 },
+      items: []
+    })
+  }
+}
+
+export async function POST(request) {
+  try {
+    const body = await request.json()
+    const { action, item, itemId, quantity } = body
+    
+    let result
+    
+    switch (action) {
+      case 'add':
+        result = await callMCPServer('cart_add', {
+          item_name: item.name,
+          quantity: item.quantity || 1
+        })
+        
+        // Broadcast cart update
+        if (result.success) {
+          const cartData = await callMCPServer('cart_get')
+          eventManager.broadcast('cart_update', {
+            items: cartData.cart?.items || [],
+            total: cartData.cart?.total || 0
+          })
+        }
+        break
+        
+      case 'remove':
+        result = await callMCPServer('cart_remove', {
+          item_id: itemId
+        })
+        
+        // Broadcast cart update
+        if (result.success) {
+          const cartData = await callMCPServer('cart_get')
+          eventManager.broadcast('cart_update', {
+            items: cartData.cart?.items || [],
+            total: cartData.cart?.total || 0
+          })
+        }
+        break
+        
+      case 'update':
+        result = await callMCPServer('cart_update_quantity', {
+          item_id: itemId,
+          quantity: quantity
+        })
+        
+        // Broadcast cart update
+        if (result.success) {
+          const cartData = await callMCPServer('cart_get')
+          eventManager.broadcast('cart_update', {
+            items: cartData.cart?.items || [],
+            total: cartData.cart?.total || 0
+          })
+        }
+        break
+        
+      case 'clear':
+        result = await callMCPServer('cart_clear')
+        
+        // Broadcast cart update
+        if (result.success) {
+          eventManager.broadcast('cart_update', {
+            items: [],
+            total: 0
+          })
+        }
+        break
+        
+      case 'complete':
+        result = await callMCPServer('process_order')
+        
+        // Broadcast order completion and cart clear
+        if (result.success) {
+          eventManager.broadcast('order_update', {
+            type: 'order_completed',
+            orderId: result.orderId
+          })
+          eventManager.broadcast('cart_update', {
+            items: [],
+            total: 0
+          })
+        }
+        break
+        
+      default:
+        return Response.json({ 
+          success: false, 
+          error: 'Invalid action' 
+        })
+    }
+    
+    return Response.json(result)
+  } catch (error) {
+    console.error('Error in voice-cart POST:', error)
+    return Response.json({ 
+      success: false, 
+      error: 'Internal server error' 
+    })
   }
 }
 
 export async function DELETE() {
   try {
-    await invoke('cart_clear', { clientId: 'default' });
-    return NextResponse.json({ success: true });
+    const result = await callMCPServer('cart_clear')
+    
+    // Broadcast cart clear
+    if (result.success) {
+      eventManager.broadcast('cart_update', {
+        items: [],
+        total: 0
+      })
+    }
+    
+    return Response.json(result)
   } catch (error) {
-    console.error('Error clearing voice cart:', error);
-    return NextResponse.json({ success: false });
+    console.error('Error in voice-cart DELETE:', error)
+    return Response.json({ 
+      success: false, 
+      error: 'Internal server error' 
+    })
   }
-}
+} 

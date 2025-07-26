@@ -34,10 +34,8 @@
     "perf:monitor": "node -e \"const {performanceMonitor} = require('./lib/performance-monitor'); console.log(performanceMonitor.getStats());\""
   },
   "dependencies": {
-    "@deepgram/sdk": "^4.9.1",
-    "@elevenlabs/elevenlabs-js": "^2.6.0",
+
     "@hookform/resolvers": "^3.10.0",
-    "@neondatabase/serverless": "^1.0.1",
     "@radix-ui/react-accordion": "1.2.2",
     "@radix-ui/react-alert-dialog": "1.1.4",
     "@radix-ui/react-aspect-ratio": "1.1.1",
@@ -81,8 +79,7 @@
     "embla-carousel-react": "8.5.1",
     "express": "^4.19.2",
     "fast-levenshtein": "^3.0.0",
-    "groq-sdk": "^0.27.0",
-    "hume": "^0.11.4",
+
     "input-otp": "1.4.1",
     "lucide-react": "^0.454.0",
     "next": "15.2.4",
@@ -98,7 +95,7 @@
     "recharts": "2.15.0",
     "socket.io": "^4.8.1",
     "sonner": "^1.7.1",
-    "sql.js": "^1.10.3",
+
     "tailwind-merge": "^2.5.5",
     "tailwindcss-animate": "^1.0.7",
     "tsx": "^4.20.3",
@@ -110,7 +107,7 @@
     "@types/node": "^22",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "@types/sql.js": "^1.4.9",
+
     "concurrently": "^9.2.0",
     "postcss": "^8.5",
     "tailwindcss": "^3.4.17",

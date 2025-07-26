@@ -1,11 +1,9 @@
 "use client"
 
-import { useEffect } from "react"
-import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Minus, Plus, Trash2 } from "lucide-react"
+import { Minus, Plus, X } from "lucide-react"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { VoiceControlButton } from "@/components/voice-control-button"
+import { CreditCard } from "lucide-react"
 
 interface OrderItem {
   id: string
@@ -22,117 +20,137 @@ interface OrderPanelProps {
   onCompleteOrder: () => void
 }
 
-export default function OrderPanel({ 
-  orders = [], 
-  removeFromOrder, 
-  updateQuantity, 
-  total = 0, 
-  onCompleteOrder 
-}: OrderPanelProps) {
-  // Add debug logging
-  useEffect(() => {
-    if (orders && orders.length > 0) {
-      console.log("Voice cart synced - items in cart:", orders.length);
-    }
-  }, [orders])
-
-  // Add a function to safely format prices
-  const formatPrice = (price: number): string => {
-    if (typeof price !== "number" || isNaN(price)) {
-      console.warn(`Invalid price value: ${price}`)
-      return "0.00"
-    }
-    return price.toFixed(2)
+export default function OrderPanel({ orders, removeFromOrder, updateQuantity, total, onCompleteOrder }: OrderPanelProps) {
+  if (orders.length === 0) {
+    return (
+      <div className="h-full flex flex-col items-center justify-center text-center p-8">
+        {/* Background Logo */}
+        <div className="opacity-20 mb-4">
+          <svg width="120" height="20" viewBox="0 0 70 12" fill="none" xmlns="http://www.w3.org/2000/svg" className="h-6 w-auto">
+            <path fillRule="evenodd" clipRule="evenodd" d="M9.71591 0.33965C9.71591 0.33965 11.7913 0.825162 12.1411 2.68747C12.6261 5.27007 11.171 5.97442 11.171 5.97442C11.171 5.97442 12.8686 7.14834 12.1411 9.26138C11.5086 11.0981 9.71591 11.6092 9.71591 11.6092H1.95513C1.53158 11.6092 1.22941 11.4817 0.929907 11.1918C0.630406 10.9019 0.499999 10.6105 0.5 10.2005V1.74834C0.500005 1.33831 0.630407 1.04698 0.929907 0.757041C1.22941 0.467105 1.53158 0.339657 1.95513 0.33965C4.86275 0.339626 9.707 0.33965 9.71591 0.33965ZM3.29439 7.2266V8.68746H9.31308V7.2266H3.29439ZM3.29439 4.51356H9.31308V3.05269H3.29439V4.51356Z" fill="currentColor"/>
+            <path d="M50.0452 4.38262C50.0452 3.29516 49.5806 2.41515 48.7422 1.76394C48.2495 1.38117 47.7508 1.35653 45.9611 1.35654C45.0857 1.35654 44.5663 1.35771 44.1428 1.41646C43.7558 1.47014 43.4463 1.57325 43.0216 1.80002C42.1833 2.38031 41.8048 3.02065 41.6206 3.77304C41.424 4.57632 41.447 5.49857 41.447 6.67827V11.4783C41.447 11.7664 41.2064 12 40.9097 12C40.6129 12 40.3723 11.7664 40.3723 11.4783V6.67827C40.3723 5.56235 40.3416 4.4848 40.5748 3.53174C40.8188 2.53513 41.3483 1.66755 42.4273 0.929978L42.4509 0.914081L42.4758 0.900426C43.0061 0.614382 43.4446 0.459341 43.9908 0.383579C44.5077 0.311884 45.1168 0.313068 45.9611 0.313063C47.6105 0.313053 48.5628 0.288329 49.4135 0.949135C50.4966 1.79043 51.1199 2.9657 51.1199 4.38262C51.1199 5.77571 50.5164 7.02097 49.3388 7.65612C48.5569 8.07787 47.8243 8.34783 46.4984 8.34783H43.1667C42.8699 8.34783 42.6293 8.11424 42.6293 7.82609C42.6293 7.53795 42.8699 7.30436 43.1667 7.30436H46.4984C47.6175 7.30436 48.1722 7.09168 48.817 6.74389C49.5739 6.33558 50.0452 5.49393 50.0452 4.38262Z" fill="currentColor"/>
+            <path d="M52.5724 11.4157V4.28314C52.5724 2.77143 54.0191 0.250475 57.1939 0.250475C57.4907 0.250475 57.7313 0.484065 57.7313 0.772213C57.7313 1.06036 57.4907 1.29395 57.1939 1.29395C54.7139 1.29395 53.6472 3.24427 53.6472 4.28314V11.4157L53.6445 11.4691C53.6169 11.7321 53.388 11.9374 53.1098 11.9374C52.813 11.9374 52.5724 11.7038 52.5724 11.4157Z" fill="currentColor"/>
+            <path d="M36.1143 1.19914C36.5076 0.493956 37.4301 0.20334 38.1749 0.550022C38.9197 0.896749 39.2046 1.74957 38.8113 2.45477L34.0691 10.9583C33.7834 11.4707 33.2183 11.764 32.6449 11.7531C32.0715 11.7639 31.5065 11.4706 31.2208 10.9583L26.4786 2.45477C26.0853 1.74957 26.3703 0.896749 27.1151 0.550022C27.8598 0.203324 28.7823 0.493952 29.1756 1.19914L32.6449 7.42026L36.1143 1.19914Z" fill="currentColor"/>
+            <path d="M68.4252 5.94782C68.4252 3.23922 66.1636 1.04348 63.3738 1.04348C60.584 1.04348 58.3224 3.23922 58.3224 5.94782C58.3224 8.65641 60.584 10.8522 63.3738 10.8522V11.8956C59.9904 11.8956 57.2477 9.2327 57.2477 5.94782C57.2477 2.66293 59.9904 0 63.3738 0C66.7572 0 69.5 2.66293 69.5 5.94782C69.5 9.2327 66.7572 11.8956 63.3738 11.8956V10.8522C66.1636 10.8522 68.4252 8.65641 68.4252 5.94782Z" fill="currentColor"/>
+            <path d="M23.0806 8.76521C23.9058 8.76522 24.5748 9.41471 24.5748 10.2159V10.2988C24.5747 11.0542 23.9439 11.6666 23.1658 11.6666C18.3336 11.6666 16.4628 11.8238 15.3624 11.2638C14.4692 10.8093 14.0421 9.70399 14.0421 8.76521H14.0475V7.51304H14.0421V4.59131H14.0475V3.33913H14.0421C14.0421 2.40033 14.4692 1.29483 15.3624 0.840292C16.4628 0.280373 18.3336 0.437778 23.1658 0.437779C23.9439 0.437779 24.5747 1.05007 24.5748 1.80551V1.88846C24.5747 2.68961 23.9058 3.33912 23.0806 3.33913H17.0569V4.59131H22.6402C23.4712 4.59131 24.1449 5.24536 24.1449 6.05217C24.1448 6.85897 23.4712 7.51304 22.6402 7.51304H17.0569V8.76521H23.0806Z" fill="currentColor"/>
+          </svg>
+        </div>
+        <h3 className="text-lg font-medium text-gray-900 mb-2"></h3>
+        <p className="text-sm text-gray-500 max-w-xs">
+          
+        </p>
+        <div className="w-12 h-px bg-gray-200 mt-4"></div>
+      </div>
+    )
   }
 
   return (
-    <Card className="border-[#e2e8f0] h-full flex flex-col">
-      <CardHeader className="border-b border-[#e2e8f0] py-2 px-3">
-        <h2 className="text-sm font-medium text-black">Current Order</h2>
-      </CardHeader>
+    <div className="h-full flex flex-col bg-white">
+      {/* Minimal Header */}
+      <div className="px-6 py-4 border-b border-gray-100">
+        <h2 className="text-lg font-medium text-gray-900">Current Order</h2>
+        <div className="w-16 h-px bg-gray-200 mt-2"></div>
+      </div>
 
-      <CardContent className="flex-grow p-0">
-        {orders.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-[150px] p-3 text-center text-[#718096]">
-            <p className="text-xs">No items in order</p>
-            <p className="text-[10px] mt-1">Add drinks from the menu</p>
-          </div>
-        ) : (
-          <ScrollArea className="h-[calc(100vh-220px)] min-h-[150px]">
-            <div className="p-2 space-y-2">
-              {orders.map((item) => (
-                <div
-                  key={item.id}
-                  className="flex items-center justify-between p-2"
-                >
-                  <div className="flex-grow">
-                    <h3 className="font-medium text-black text-xs">{item.name}</h3>
-                    <p className="text-[10px] text-[#FFD700]">${formatPrice(item.price)}</p>
-                  </div>
+      {/* Order Items - Floating above background logo */}
+      <div className="flex-1 overflow-auto px-6 py-4 relative">
+        {/* Background Logo - always visible */}
+        <div className="absolute inset-0 flex items-center justify-center opacity-10 pointer-events-none">
+          <svg width="120" height="20" viewBox="0 0 70 12" fill="none" xmlns="http://www.w3.org/2000/svg" className="h-6 w-auto">
+            <path fillRule="evenodd" clipRule="evenodd" d="M9.71591 0.33965C9.71591 0.33965 11.7913 0.825162 12.1411 2.68747C12.6261 5.27007 11.171 5.97442 11.171 5.97442C11.171 5.97442 12.8686 7.14834 12.1411 9.26138C11.5086 11.0981 9.71591 11.6092 9.71591 11.6092H1.95513C1.53158 11.6092 1.22941 11.4817 0.929907 11.1918C0.630406 10.9019 0.499999 10.6105 0.5 10.2005V1.74834C0.500005 1.33831 0.630407 1.04698 0.929907 0.757041C1.22941 0.467105 1.53158 0.339657 1.95513 0.33965C4.86275 0.339626 9.707 0.33965 9.71591 0.33965ZM3.29439 7.2266V8.68746H9.31308V7.2266H3.29439ZM3.29439 4.51356H9.31308V3.05269H3.29439V4.51356Z" fill="currentColor"/>
+            <path d="M50.0452 4.38262C50.0452 3.29516 49.5806 2.41515 48.7422 1.76394C48.2495 1.38117 47.7508 1.35653 45.9611 1.35654C45.0857 1.35654 44.5663 1.35771 44.1428 1.41646C43.7558 1.47014 43.4463 1.57325 43.0216 1.80002C42.1833 2.38031 41.8048 3.02065 41.6206 3.77304C41.424 4.57632 41.447 5.49857 41.447 6.67827V11.4783C41.447 11.7664 41.2064 12 40.9097 12C40.6129 12 40.3723 11.7664 40.3723 11.4783V6.67827C40.3723 5.56235 40.3416 4.4848 40.5748 3.53174C40.8188 2.53513 41.3483 1.66755 42.4273 0.929978L42.4509 0.914081L42.4758 0.900426C43.0061 0.614382 43.4446 0.459341 43.9908 0.383579C44.5077 0.311884 45.1168 0.313068 45.9611 0.313063C47.6105 0.313053 48.5628 0.288329 49.4135 0.949135C50.4966 1.79043 51.1199 2.9657 51.1199 4.38262C51.1199 5.77571 50.5164 7.02097 49.3388 7.65612C48.5569 8.07787 47.8243 8.34783 46.4984 8.34783H43.1667C42.8699 8.34783 42.6293 8.11424 42.6293 7.82609C42.6293 7.53795 42.8699 7.30436 43.1667 7.30436H46.4984C47.6175 7.30436 48.1722 7.09168 48.817 6.74389C49.5739 6.33558 50.0452 5.49393 50.0452 4.38262Z" fill="currentColor"/>
+            <path d="M52.5724 11.4157V4.28314C52.5724 2.77143 54.0191 0.250475 57.1939 0.250475C57.4907 0.250475 57.7313 0.484065 57.7313 0.772213C57.7313 1.06036 57.4907 1.29395 57.1939 1.29395C54.7139 1.29395 53.6472 3.24427 53.6472 4.28314V11.4157L53.6445 11.4691C53.6169 11.7321 53.388 11.9374 53.1098 11.9374C52.813 11.9374 52.5724 11.7038 52.5724 11.4157Z" fill="currentColor"/>
+            <path d="M36.1143 1.19914C36.5076 0.493956 37.4301 0.20334 38.1749 0.550022C38.9197 0.896749 39.2046 1.74957 38.8113 2.45477L34.0691 10.9583C33.7834 11.4707 33.2183 11.764 32.6449 11.7531C32.0715 11.7639 31.5065 11.4706 31.2208 10.9583L26.4786 2.45477C26.0853 1.74957 26.3703 0.896749 27.1151 0.550022C27.8598 0.203324 28.7823 0.493952 29.1756 1.19914L32.6449 7.42026L36.1143 1.19914Z" fill="currentColor"/>
+            <path d="M68.4252 5.94782C68.4252 3.23922 66.1636 1.04348 63.3738 1.04348C60.584 1.04348 58.3224 3.23922 58.3224 5.94782C58.3224 8.65641 60.584 10.8522 63.3738 10.8522V11.8956C59.9904 11.8956 57.2477 9.2327 57.2477 5.94782C57.2477 2.66293 59.9904 0 63.3738 0C66.7572 0 69.5 2.66293 69.5 5.94782C69.5 9.2327 66.7572 11.8956 63.3738 11.8956V10.8522C66.1636 10.8522 68.4252 8.65641 68.4252 5.94782Z" fill="currentColor"/>
+            <path d="M23.0806 8.76521C23.9058 8.76522 24.5748 9.41471 24.5748 10.2159V10.2988C24.5747 11.0542 23.9439 11.6666 23.1658 11.6666C18.3336 11.6666 16.4628 11.8238 15.3624 11.2638C14.4692 10.8093 14.0421 9.70399 14.0421 8.76521H14.0475V7.51304H14.0421V4.59131H14.0475V3.33913H14.0421C14.0421 2.40033 14.4692 1.29483 15.3624 0.840292C16.4628 0.280373 18.3336 0.437778 23.1658 0.437779C23.9439 0.437779 24.5747 1.05007 24.5748 1.80551V1.88846C24.5747 2.68961 23.9058 3.33912 23.0806 3.33913H17.0569V4.59131H22.6402C23.4712 4.59131 24.1449 5.24536 24.1449 6.05217C24.1448 6.85897 23.4712 7.51304 22.6402 7.51304H17.0569V8.76521H23.0806Z" fill="currentColor"/>
+          </svg>
+        </div>
+        
+        {/* Items floating above logo */}
+        <div className="relative z-10 space-y-3">
+          {orders.map((order, index) => (
+            <div
+              key={index}
+              className="group bg-white/90 backdrop-blur-sm rounded-xl p-4 hover:bg-white/95 transition-all duration-200 shadow-sm"
+            >
+            <div className="flex items-center justify-between">
+              {/* Item Info */}
+              <div className="flex-1 min-w-0">
+                <h4 className="font-medium text-gray-900 truncate">
+                  {order.name}
+                </h4>
+                <p className="text-sm text-gray-500 mt-1">
+                  ${order.price.toFixed(2)} each
+                </p>
+              </div>
 
-                  <div className="flex items-center gap-1">
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      className="h-5 w-5 rounded-full border-[#e2e8f0]"
-                      onClick={() => updateQuantity(item.id, item.quantity - 1)}
-                    >
-                      <Minus className="h-2 w-2" />
-                    </Button>
-
-                    <span className="w-4 text-center text-xs text-black">{item.quantity}</span>
-
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      className="h-5 w-5 rounded-full border-[#e2e8f0]"
-                      onClick={() => updateQuantity(item.id, item.quantity + 1)}
-                    >
-                      <Plus className="h-2 w-2" />
-                    </Button>
-
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-5 w-5 text-[#a0aec0] hover:text-red-500"
-                      onClick={() => removeFromOrder(item.id)}
-                    >
-                      <Trash2 className="h-3 w-3" />
-                    </Button>
-                  </div>
+              {/* Quantity Controls */}
+              <div className="flex items-center gap-3 ml-4">
+                <div className="flex items-center gap-2 bg-white rounded-lg border border-gray-200 p-1">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 w-8 p-0 hover:bg-gray-100"
+                    onClick={() => updateQuantity(index, order.quantity - 1)}
+                  >
+                    <Minus className="h-3 w-3" />
+                  </Button>
+                  
+                  <span className="w-8 text-center text-sm font-medium">
+                    {order.quantity}
+                  </span>
+                  
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 w-8 p-0 hover:bg-gray-100"
+                    onClick={() => updateQuantity(index, order.quantity + 1)}
+                  >
+                    <Plus className="h-3 w-3" />
+                  </Button>
                 </div>
-              ))}
+
+                {/* Remove Button */}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 w-8 p-0 text-gray-400 hover:text-red-500 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-all duration-200"
+                  onClick={() => removeFromOrder(index)}
+                >
+                  <X className="h-3 w-3" />
+                </Button>
+              </div>
             </div>
-          </ScrollArea>
-        )}
-      </CardContent>
 
-      <CardFooter className="flex flex-col border-t border-[#e2e8f0] p-3">
-        <div className="flex justify-between w-full mb-2">
-          <span className="text-sm text-black">Total</span>
-          <span className="font-bold text-sm text-[#FFD700]">
-            ${typeof total === "number" && !isNaN(total) ? total.toFixed(2) : "0.00"}
-          </span>
-        </div>
-
-        {/* Complete Order Button */}
-        {orders.length > 0 && (
-          <Button 
-            onClick={onCompleteOrder}
-            className="w-full mb-3 bg-green-600 hover:bg-green-700 text-white"
-          >
-            Complete Order
-          </Button>
-        )}
-
-        {/* Voice Control Button - positioned symmetrically above the divider line */}
-        <div className="flex justify-center w-full mb-3 relative">
-          <div className="absolute top-6 left-0 right-0 h-px bg-[#e2e8f0]"></div>
-          <div className="relative z-10 bg-white px-2">
-            <VoiceControlButton />
+            {/* Subtle total for this item */}
+            <div className="flex justify-end mt-2">
+              <span className="text-sm font-medium text-gray-700">
+                ${(order.price * order.quantity).toFixed(2)}
+              </span>
+            </div>
           </div>
+        ))}
         </div>
-      </CardFooter>
-    </Card>
+      </div>
+
+      {/* Minimal Total & Checkout */}
+      <div className="px-6 py-4 border-t border-gray-100 bg-gray-50/50">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <p className="text-sm text-gray-500">Total</p>
+            <p className="text-2xl font-light text-gray-900">${total.toFixed(2)}</p>
+          </div>
+          <div className="w-16 h-px bg-gray-200"></div>
+        </div>
+        
+        <Button
+          onClick={onCompleteOrder}
+          className="w-full bg-gray-900 hover:bg-gray-800 text-white h-12 rounded-xl font-medium"
+          disabled={orders.length === 0}
+        >
+          Complete Order
+        </Button>
+      </div>
+    </div>
   )
 }
