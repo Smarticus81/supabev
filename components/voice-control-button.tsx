@@ -228,6 +228,24 @@ export function VoiceControlButton({
     audioElementRef.current = document.createElement('audio');
     audioElementRef.current.autoplay = true;
     audioElementRef.current.style.display = 'none';
+    audioElementRef.current.controls = false;
+    audioElementRef.current.muted = false;
+    audioElementRef.current.volume = 1.0;
+    audioElementRef.current.preload = 'auto';
+    
+    // Add event listeners for debugging
+    audioElementRef.current.addEventListener('canplay', () => {
+      console.log('🔊 Audio can play');
+    });
+    
+    audioElementRef.current.addEventListener('play', () => {
+      console.log('🔊 Audio started playing');
+    });
+    
+    audioElementRef.current.addEventListener('error', (e) => {
+      console.error('🔊 Audio error:', e);
+    });
+    
     document.body.appendChild(audioElementRef.current);
   };
 
@@ -400,10 +418,30 @@ export function VoiceControlButton({
 
       // Handle incoming audio track
       pc.ontrack = (event) => {
-        console.log('🔊 Received audio track');
+        console.log('🔊 Received audio track from OpenAI');
         if (audioElementRef.current && event.streams[0]) {
-          audioElementRef.current.srcObject = event.streams[0];
-          setIsPlaying(true);
+          const stream = event.streams[0];
+          console.log('🔊 Setting audio stream source');
+          audioElementRef.current.srcObject = stream;
+          
+          // Ensure audio plays by manually triggering play if needed
+          audioElementRef.current.play().then(() => {
+            console.log('🔊 Audio playback started successfully');
+            setIsPlaying(true);
+          }).catch((error) => {
+            console.error('🔊 Audio playback failed:', error);
+                         // Try to enable audio context and retry
+             if (typeof AudioContext !== 'undefined' || typeof (window as any).webkitAudioContext !== 'undefined') {
+               const AudioCtx = AudioContext || (window as any).webkitAudioContext;
+               const audioContext = new AudioCtx();
+              if (audioContext.state === 'suspended') {
+                audioContext.resume().then(() => {
+                  console.log('🔊 Audio context resumed, retrying play');
+                  audioElementRef.current?.play().catch(console.error);
+                });
+              }
+            }
+          });
         }
       };
 
@@ -1794,14 +1832,15 @@ Remember: Create the perfect illusion of instant response while maintaining natu
           console.log(`⏱️ Wake-to-Response Latency: ${latency}ms (T0: ${wakeWordTimeRef.current}, T1: ${firstResponseTime})`);
           wakeWordTimeRef.current = null; // Reset for next interaction
         }
-        // Aggressively cancel *any* speculative speech (including wake ack)
-        if ('speechSynthesis' in window) {
+        // Cancel only browser-based speculative speech, not OpenAI audio
+        if ('speechSynthesis' in window && audioQueueRef.current.some(item => item.type === 'speculative')) {
           window.speechSynthesis.cancel();
-          console.log('🛑 [Speculative/Wake Ack] Cancelled all TTS due to real AI audio start');
+          console.log('🛑 [Speculative] Cancelled browser TTS due to real AI audio start');
         }
         break;
 
       case 'output_audio_buffer.stopped':
+        console.log('🔊 OpenAI audio output stopped');
         setIsPlaying(false);
         break;
 
@@ -1870,6 +1909,16 @@ Remember: Create the perfect illusion of instant response while maintaining natu
       setTranscript('');
       setAiResponse('');
       console.log('🚀 Starting voice session...');
+
+      // Ensure audio context is enabled for audio playback
+      if (typeof AudioContext !== 'undefined' || typeof (window as any).webkitAudioContext !== 'undefined') {
+        const AudioCtx = AudioContext || (window as any).webkitAudioContext;
+        const audioContext = new AudioCtx();
+        if (audioContext.state === 'suspended') {
+          await audioContext.resume();
+          console.log('🔊 Audio context resumed for voice session');
+        }
+      }
 
       // Parallelize API key fetching and microphone access
       const apiKeyPromise = getApiKey();
@@ -2563,10 +2612,10 @@ Remember: Create the perfect illusion of instant response while maintaining natu
         <source src="/chime.mp3" type="audio/mpeg" />
       </audio>
 
-      {/* Voice assistant toggle button - redesigned to match footer banner theme */}
+      {/* Voice assistant toggle button - redesigned to match footer banner theme with iPad optimizations */}
       <button
         onClick={toggleListening}
-        className={`relative group p-3 rounded-xl transition-all duration-300 ${
+        className={`relative group p-3 ipad:p-4 rounded-xl transition-all duration-300 touch-button no-select min-h-touch min-w-touch ${
           isListening || isWakeWordMode 
             ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/25 ring-2 ring-primary/20' 
             : 'bg-white/95 backdrop-blur-sm border border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-gray-300 hover:shadow-md shadow-sm'
@@ -2610,7 +2659,7 @@ Remember: Create the perfect illusion of instant response while maintaining natu
       {/* Status text below button - refined typography */}
       <div className="absolute -bottom-8 left-1/2 transform -translate-x-1/2 whitespace-nowrap">
         <p className="text-xs font-medium text-gray-500 text-center">
-          {isWakeWordMode ? 'Say "Hey Bev"' : 
+          {isWakeWordMode ? '' : 
            isListening ? 'Listening...' : 
            isProcessing ? 'Processing...' : 
            ''}

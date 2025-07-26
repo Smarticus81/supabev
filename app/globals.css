@@ -204,3 +204,153 @@ body {
     font-size: 16px !important;
   }
 }
+
+/* iPad and iOS Safari Optimizations */
+@layer utilities {
+  /* Safe area support for notched devices */
+  .safe-area-top {
+    padding-top: env(safe-area-inset-top);
+  }
+  
+  .safe-area-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  
+  .safe-area-left {
+    padding-left: env(safe-area-inset-left);
+  }
+  
+  .safe-area-right {
+    padding-right: env(safe-area-inset-right);
+  }
+  
+  .safe-area-all {
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
+
+  /* Touch-optimized interactions */
+  .touch-target {
+    min-height: 44px;
+    min-width: 44px;
+    cursor: pointer;
+  }
+  
+  .touch-button {
+    @apply touch-target;
+    @apply transition-all duration-150 ease-in-out;
+    @apply active:scale-95 active:bg-opacity-80;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+  
+  /* Prevent zoom on input focus for iOS */
+  .no-zoom {
+    font-size: 16px !important;
+    transform-origin: center;
+  }
+  
+  /* Better text selection on touch devices */
+  .touch-text {
+    -webkit-user-select: text;
+    -webkit-touch-callout: default;
+  }
+  
+  /* Prevent text selection for UI elements */
+  .no-select {
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+  }
+
+  /* iOS Safari specific fixes */
+  .ios-safe {
+    /* Fix for Safari's bottom safe area in landscape mode */
+    min-height: 100vh;
+    min-height: -webkit-fill-available;
+  }
+  
+  /* Prevent rubber band scrolling on iOS */
+  .no-bounce {
+    overscroll-behavior: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  
+  /* Full screen layout support */
+  .full-screen {
+    height: 100vh;
+    height: -webkit-fill-available;
+  }
+  
+  /* Voice button positioning for iPad */
+  .voice-button-ipad {
+    @apply fixed bottom-6 right-6 z-50;
+    @apply ipad:bottom-8 ipad:right-8;
+    @apply ipad-landscape:bottom-6 ipad-landscape:right-6;
+  }
+  
+  /* Navigation optimization for iPad */
+  .nav-ipad {
+    @apply ipad:px-8 ipad:py-4;
+    @apply ipad-landscape:px-6 ipad-landscape:py-3;
+  }
+  
+  /* Card grid responsive for iPad */
+  .grid-ipad {
+    @apply grid-cols-2 ipad:grid-cols-3 ipad-landscape:grid-cols-4 ipad-pro:grid-cols-5;
+  }
+  
+  /* Text sizing for iPad readability */
+  .text-ipad {
+    @apply ipad:text-lg ipad-landscape:text-base;
+  }
+}
+
+/* iOS Safari viewport fix */
+@supports (-webkit-touch-callout: none) {
+  .ios-height-fix {
+    min-height: -webkit-fill-available;
+  }
+}
+
+/* Improve button press feedback on touch devices */
+@media (hover: none) and (pointer: coarse) {
+  button:active,
+  .button:active,
+  [role="button"]:active {
+    transform: scale(0.95);
+    opacity: 0.8;
+  }
+}
+
+/* iPad specific media queries */
+@media screen and (min-width: 768px) and (max-width: 1024px) {
+  /* iPad portrait and landscape specific styles */
+  .container {
+    max-width: 100%;
+    padding-left: 2rem;
+    padding-right: 2rem;
+  }
+  
+  /* Larger touch targets for iPad */
+  button, input, select, textarea {
+    min-height: 48px;
+  }
+  
+  /* Better spacing for iPad screen real estate */
+  .space-y-4 > * + * {
+    margin-top: 1.5rem;
+  }
+}
+
+/* High DPI display optimizations */
+@media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
+  .crisp-edges {
+    image-rendering: -webkit-optimize-contrast;
+    image-rendering: crisp-edges;
+  }
+}

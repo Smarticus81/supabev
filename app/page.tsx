@@ -355,13 +355,13 @@ export default function Home() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
+    <div className="min-h-screen bg-gray-50 flex flex-col ios-height-fix no-bounce safe-area-all">
       {/* Header */}
-      <div className="bg-white/90 backdrop-blur-sm border-b border-gray-100 px-4 sm:px-6 py-3 flex-shrink-0">
+      <div className="bg-white/90 backdrop-blur-sm border-b border-gray-100 px-4 ipad:px-6 py-3 flex-shrink-0 nav-ipad">
         <div className="flex items-center justify-between">
           {/* Logo */}
           <div className="flex items-center gap-3">
-            <svg width="70" height="12" viewBox="0 0 70 12" fill="none" xmlns="http://www.w3.org/2000/svg" className="h-4 w-auto">
+            <svg width="70" height="12" viewBox="0 0 70 12" fill="none" xmlns="http://www.w3.org/2000/svg" className="h-4 w-auto crisp-edges">
               <path fillRule="evenodd" clipRule="evenodd" d="M9.71591 0.33965C9.71591 0.33965 11.7913 0.825162 12.1411 2.68747C12.6261 5.27007 11.171 5.97442 11.171 5.97442C11.171 5.97442 12.8686 7.14834 12.1411 9.26138C11.5086 11.0981 9.71591 11.6092 9.71591 11.6092H1.95513C1.53158 11.6092 1.22941 11.4817 0.929907 11.1918C0.630406 10.9019 0.499999 10.6105 0.5 10.2005V1.74834C0.500005 1.33831 0.630407 1.04698 0.929907 0.757041C1.22941 0.467105 1.53158 0.339657 1.95513 0.33965C4.86275 0.339626 9.707 0.33965 9.71591 0.33965ZM3.29439 7.2266V8.68746H9.31308V7.2266H3.29439ZM3.29439 4.51356H9.31308V3.05269H3.29439V4.51356Z" fill="#17223B"/>
               <path d="M50.0452 4.38262C50.0452 3.29516 49.5806 2.41515 48.7422 1.76394C48.2495 1.38117 47.7508 1.35653 45.9611 1.35654C45.0857 1.35654 44.5663 1.35771 44.1428 1.41646C43.7558 1.47014 43.4463 1.57325 43.0216 1.80002C42.1833 2.38031 41.8048 3.02065 41.6206 3.77304C41.424 4.57632 41.447 5.49857 41.447 6.67827V11.4783C41.447 11.7664 41.2064 12 40.9097 12C40.6129 12 40.3723 11.7664 40.3723 11.4783V6.67827C40.3723 5.56235 40.3416 4.4848 40.5748 3.53174C40.8188 2.53513 41.3483 1.66755 42.4273 0.929978L42.4509 0.914081L42.4758 0.900426C43.0061 0.614382 43.4446 0.459341 43.9908 0.383579C44.5077 0.311884 45.1168 0.313068 45.9611 0.313063C47.6105 0.313053 48.5628 0.288329 49.4135 0.949135C50.4966 1.79043 51.1199 2.9657 51.1199 4.38262C51.1199 5.77571 50.5164 7.02097 49.3388 7.65612C48.5569 8.07787 47.8243 8.34783 46.4984 8.34783H43.1667C42.8699 8.34783 42.6293 8.11424 42.6293 7.82609C42.6293 7.53795 42.8699 7.30436 43.1667 7.30436H46.4984C47.6175 7.30436 48.1722 7.09168 48.817 6.74389C49.5739 6.33558 50.0452 5.49393 50.0452 4.38262Z" fill="#17223B"/>
               <path d="M52.5724 11.4157V4.28314C52.5724 2.77143 54.0191 0.250475 57.1939 0.250475C57.4907 0.250475 57.7313 0.484065 57.7313 0.772213C57.7313 1.06036 57.4907 1.29395 57.1939 1.29395C54.7139 1.29395 53.6472 3.24427 53.6472 4.28314V11.4157L53.6445 11.4691C53.6169 11.7321 53.388 11.9374 53.1098 11.9374C52.813 11.9374 52.5724 11.7038 52.5724 11.4157Z" fill="#17223B"/>
@@ -381,7 +381,7 @@ export default function Home() {
               <Input
                 type="search"
                 placeholder="Search"
-                className="pl-10 w-48 bg-gray-50/50 border-0 rounded-lg"
+                className="pl-10 w-48 ipad:w-64 bg-gray-50/50 border-0 rounded-lg no-zoom touch-target"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
@@ -389,7 +389,7 @@ export default function Home() {
 
             {/* Cart indicator */}
             {orders.length > 0 && (
-              <div className="flex items-center gap-2 px-3 py-2 bg-gray-900 text-white rounded-lg">
+              <div className="flex items-center gap-2 px-3 py-2 bg-gray-900 text-white rounded-lg touch-button no-select">
                 <Package className="h-4 w-4" />
                 <span className="text-sm font-medium">{orders.length}</span>
               </div>
@@ -399,17 +399,17 @@ export default function Home() {
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 p-6 pb-20">
+      <div className="flex-1 p-4 ipad:p-6 pb-20 ipad:pb-24">
         {renderView()}
       </div>
 
       {/* Voice Control Button - Fixed Position with High Z-Index */}
-      <div className="fixed bottom-24 right-6 z-[9999]">
+      <div className="voice-button-ipad z-[9999]">
         <VoiceControlButton />
       </div>
 
       {/* Bottom Navigation */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-sm border-t border-gray-100 px-6 py-3 z-50">
+      <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-sm border-t border-gray-100 px-4 ipad:px-6 py-3 z-50 safe-area-bottom">
         <div className="flex justify-center">
           <div className="flex bg-gray-100 rounded-xl p-1">
             {navigation.map(({ id, icon: Icon, label }) => (
@@ -419,14 +419,14 @@ export default function Home() {
                   console.log('Clicking tab:', id)
                   setSelectedView(id)
                 }}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all duration-200 ${
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all duration-200 touch-button no-select min-h-touch min-w-touch ${
                   selectedView === id
                     ? 'bg-white text-gray-900 shadow-sm'
                     : 'text-gray-600 hover:text-gray-900'
                 }`}
               >
                 <Icon className="h-4 w-4" />
-                <span className="text-sm font-medium">{label}</span>
+                <span className="text-sm font-medium text-ipad">{label}</span>
               </button>
             ))}
           </div>

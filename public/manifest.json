@@ -1,0 +1,43 @@
+{
+  "name": "BevPro - Professional Beverage Management System",
+  "short_name": "BevPro POS",
+  "description": "Professional beverage point of sale system for Knotting Hill Place Estate",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#ffffff",
+  "orientation": "any",
+  "scope": "/",
+  "categories": ["business", "productivity", "food"],
+  "lang": "en-US",
+  "dir": "ltr",
+  "icons": [
+    {
+      "src": "/logo.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/favicon.ico",
+      "sizes": "32x32",
+      "type": "image/x-icon"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/logo.svg",
+      "sizes": "1024x768",
+      "type": "image/svg+xml",
+      "form_factor": "wide",
+      "label": "BevPro POS Main Interface"
+    }
+  ],
+  "features": [
+    "voice-control",
+    "real-time-inventory",
+    "payment-processing",
+    "analytics"
+  ],
+  "prefer_related_applications": false
+} 

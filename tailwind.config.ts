@@ -16,6 +16,22 @@ const config: Config = {
         "2xl": "1400px",
       },
     },
+    screens: {
+      'xs': '375px',
+      'sm': '640px',
+      'md': '768px',
+      'ipad': '768px',
+      'ipad-pro': '1024px',
+      'lg': '1024px',
+      'xl': '1280px',
+      '2xl': '1400px',
+      // iPad specific breakpoints
+      'ipad-portrait': '768px',
+      'ipad-landscape': '1024px',
+      'ipad-air': '820px',
+      'ipad-pro-11': '834px',
+      'ipad-pro-12': '1024px',
+    },
     extend: {
       colors: {
         border: "hsl(var(--border))",
@@ -60,6 +76,19 @@ const config: Config = {
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
+      },
+      spacing: {
+        'touch': '44px', // iOS recommended minimum touch target size
+        'safe-top': 'env(safe-area-inset-top)',
+        'safe-bottom': 'env(safe-area-inset-bottom)',
+        'safe-left': 'env(safe-area-inset-left)',
+        'safe-right': 'env(safe-area-inset-right)',
+      },
+      minHeight: {
+        'touch': '44px',
+      },
+      minWidth: {
+        'touch': '44px',
       },
     },
   },
