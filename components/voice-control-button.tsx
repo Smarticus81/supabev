@@ -125,6 +125,8 @@ export function VoiceControlButton({
   const dataChannelRef = useRef<RTCDataChannel | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const audioElementRef = useRef<HTMLAudioElement | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const gainNodeRef = useRef<GainNode | null>(null);
 
   // Audio queue and speculative response management
   const audioQueueRef = useRef<Array<{ 
@@ -416,13 +418,56 @@ export function VoiceControlButton({
         }
       };
 
-      // Handle incoming audio track
+            // Handle incoming audio track
       pc.ontrack = (event) => {
-        console.log('🔊 Received audio track from OpenAI');
+        console.log('🔊 Received audio track from OpenAI', event);
+        console.log('🔊 Track kind:', event.track.kind);
+        console.log('🔊 Track state:', event.track.readyState);
+        console.log('🔊 Streams count:', event.streams.length);
+        
         if (audioElementRef.current && event.streams[0]) {
           const stream = event.streams[0];
-          console.log('🔊 Setting audio stream source');
+          console.log('🔊 Setting audio stream source, tracks:', stream.getTracks().length);
+          console.log('🔊 Audio tracks:', stream.getAudioTracks().map(t => ({ id: t.id, enabled: t.enabled, muted: t.muted })));
+          
           audioElementRef.current.srcObject = stream;
+          
+          // Log audio element state
+          console.log('🔊 Audio element state:', {
+            paused: audioElementRef.current.paused,
+            muted: audioElementRef.current.muted,
+            volume: audioElementRef.current.volume,
+            readyState: audioElementRef.current.readyState
+          });
+          
+          // Setup Web Audio API as backup for better audio handling
+          try {
+            if (!audioContextRef.current) {
+              const AudioCtx = (window as any).AudioContext || (window as any).webkitAudioContext;
+              audioContextRef.current = new AudioCtx();
+              gainNodeRef.current = audioContextRef.current.createGain();
+              gainNodeRef.current.connect(audioContextRef.current.destination);
+              console.log('🔊 Web Audio API context created');
+            }
+            
+            const context = audioContextRef.current;
+            const gainNode = gainNodeRef.current;
+            
+            if (context && gainNode) {
+              // Connect stream to Web Audio API as backup
+              const source = context.createMediaStreamSource(stream);
+              source.connect(gainNode);
+              console.log('🔊 Stream connected to Web Audio API');
+              
+              if (context.state === 'suspended') {
+                context.resume().then(() => {
+                  console.log('🔊 Web Audio context resumed');
+                });
+              }
+            }
+          } catch (webAudioError) {
+            console.warn('🔊 Web Audio API setup failed:', webAudioError);
+          }
           
           // Ensure audio plays by manually triggering play if needed
           audioElementRef.current.play().then(() => {
@@ -430,10 +475,14 @@ export function VoiceControlButton({
             setIsPlaying(true);
           }).catch((error) => {
             console.error('🔊 Audio playback failed:', error);
-                         // Try to enable audio context and retry
-             if (typeof AudioContext !== 'undefined' || typeof (window as any).webkitAudioContext !== 'undefined') {
-               const AudioCtx = AudioContext || (window as any).webkitAudioContext;
-               const audioContext = new AudioCtx();
+            console.error('🔊 Error name:', error.name);
+            console.error('🔊 Error message:', error.message);
+            
+            // Try to enable audio context and retry
+            if (typeof AudioContext !== 'undefined' || typeof (window as any).webkitAudioContext !== 'undefined') {
+              const AudioCtx = AudioContext || (window as any).webkitAudioContext;
+              const audioContext = new AudioCtx();
+              console.log('🔊 Audio context state:', audioContext.state);
               if (audioContext.state === 'suspended') {
                 audioContext.resume().then(() => {
                   console.log('🔊 Audio context resumed, retrying play');
@@ -442,6 +491,10 @@ export function VoiceControlButton({
               }
             }
           });
+        } else {
+          console.error('🔊 No audio element or stream available');
+          if (!audioElementRef.current) console.error('🔊 audioElementRef.current is null');
+          if (!event.streams[0]) console.error('🔊 event.streams[0] is null');
         }
       };
 
@@ -1824,7 +1877,21 @@ Remember: Create the perfect illusion of instant response while maintaining natu
         break;
 
       case 'output_audio_buffer.started':
+        console.log('🔊 OpenAI audio output started - audio should begin playing now');
         setIsPlaying(true);
+        
+        // Log audio element status when OpenAI audio starts
+        if (audioElementRef.current) {
+          console.log('🔊 Audio element when OpenAI starts:', {
+            srcObject: !!audioElementRef.current.srcObject,
+            paused: audioElementRef.current.paused,
+            muted: audioElementRef.current.muted,
+            volume: audioElementRef.current.volume,
+            readyState: audioElementRef.current.readyState,
+            currentTime: audioElementRef.current.currentTime,
+            duration: audioElementRef.current.duration
+          });
+        }
         
         if (wakeWordTimeRef.current) {
           const firstResponseTime = Date.now();
