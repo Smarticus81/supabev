@@ -311,18 +311,23 @@ export function VoiceControlButton({
   const getApiKey = async () => {
     try {
       console.log('🔑 Getting OpenAI API key...');
+      console.log('🌐 Fetching /api/config...');
       const response = await fetch('/api/config');
       
+      console.log('📥 Config API response status:', response.status);
       if (!response.ok) {
         throw new Error(`Failed to get config: ${response.status}`);
       }
 
+      console.log('📄 Parsing config data...');
       const data = await response.json();
+      console.log('🔍 Config data received:', { hasOpenaiKey: !!data.openaiKey, keyPreview: data.openaiKey?.slice(0, 10) + '...' });
+      
       if (!data.openaiKey || data.openaiKey === 'your-openai-api-key-here') {
         throw new Error('OpenAI API key not configured. Please update your .env file.');
       }
       
-      console.log('✅ API key obtained');
+      console.log('✅ API key obtained successfully');
       return data.openaiKey;
     } catch (error) {
       console.error('❌ Failed to get API key:', error);
@@ -1992,11 +1997,14 @@ Remember: Create the perfect illusion of instant response while maintaining natu
       }
 
       // Parallelize API key fetching and microphone access
+      console.log('🔑 Creating API key and microphone promises...');
       const apiKeyPromise = getApiKey();
       const streamPromise = getMicrophoneAccess();
       
+      console.log('⏳ Waiting for API key and microphone access...');
       const [apiKey, stream] = await Promise.all([apiKeyPromise, streamPromise]);
       
+      console.log('✅ Both API key and stream obtained, setting up WebRTC...');
       // Setup WebRTC connection with the results
       await setupWebRTCConnection(apiKey, stream);
       
