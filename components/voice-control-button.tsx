@@ -208,22 +208,22 @@ export function VoiceControlButton({
     return () => window.removeEventListener('resize', detectDevice);
   }, []);
 
-  // Auto-start wake word mode when component mounts
-  useEffect(() => {
-    console.log('🚀 Voice control component mounted, auto-starting wake word mode...');
-    
-    // Wait a moment for component to fully initialize
-    const initTimer = setTimeout(() => {
-      if (!isListening && !isWakeWordMode) {
-        console.log('🎯 Auto-starting wake word detection...');
-        startWakeWordDetection();
-      }
-    }, 1000);
+  // Auto-start disabled - voice control now requires user interaction
+  // useEffect(() => {
+  //   console.log('🚀 Voice control component mounted, auto-starting wake word mode...');
+  //   
+  //   // Wait a moment for component to fully initialize
+  //   const initTimer = setTimeout(() => {
+  //     if (!isListening && !isWakeWordMode) {
+  //       console.log('🎯 Auto-starting wake word detection...');
+  //       startWakeWordDetection();
+  //     }
+  //   }, 1000);
 
-    return () => {
-      clearTimeout(initTimer);
-    };
-  }, []); // Empty dependency array means this runs once on mount
+  //   return () => {
+  //     clearTimeout(initTimer);
+  //   };
+  // }, []); // Empty dependency array means this runs once on mount
 
   const initializeAudioElement = () => {
     // Create audio element for playback
@@ -2679,41 +2679,47 @@ Remember: Create the perfect illusion of instant response while maintaining natu
         <source src="/chime.mp3" type="audio/mpeg" />
       </audio>
 
-      {/* Voice assistant toggle button - redesigned to match footer banner theme with iPad optimizations */}
+      {/* Voice assistant toggle button - prominent design with high z-index */}
       <button
         onClick={toggleListening}
-        className={`relative group p-3 ipad:p-4 rounded-xl transition-all duration-300 touch-button no-select min-h-touch min-w-touch ${
+        className={`fixed top-4 right-4 z-50 group p-4 rounded-xl transition-all duration-300 touch-button no-select min-h-touch min-w-touch shadow-2xl ${
           isListening || isWakeWordMode 
-            ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/25 ring-2 ring-primary/20' 
-            : 'bg-white/95 backdrop-blur-sm border border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-gray-300 hover:shadow-md shadow-sm'
+            ? 'bg-red-600 text-white shadow-lg shadow-red-600/25 ring-2 ring-red-500/20 hover:bg-red-700' 
+            : 'bg-blue-600 text-white hover:bg-blue-700 shadow-lg shadow-blue-600/25'
         } ${isProcessing ? 'animate-pulse' : ''}`}
         disabled={isProcessing}
-        title={isListening || isWakeWordMode ? 'Voice Assistant Active' : 'Start Voice Assistant'}
+        title={isListening || isWakeWordMode ? 'Stop Voice Assistant' : 'Start Voice Assistant'}
       >
         {/* Subtle background glow for active state */}
         {(isListening || isWakeWordMode) && (
           <div className="absolute inset-0 rounded-xl bg-primary/10 animate-pulse"></div>
         )}
         
-        {/* Voice icon with improved states */}
-        <div className="relative z-10">
+        {/* Voice icon with clear ON/OFF states */}
+        <div className="relative z-10 flex flex-col items-center">
           {isListening || isWakeWordMode ? (
-            <div className="flex items-center justify-center space-x-0.5">
-              {/* Audio waveform visualization */}
-              <div className={`w-1 h-3 bg-current rounded-full ${isProcessing ? 'animate-pulse' : 'animate-bounce'} delay-0`}></div>
-              <div className={`w-1 h-5 bg-current rounded-full ${isProcessing ? 'animate-pulse' : 'animate-bounce'} delay-75`}></div>
-              <div className={`w-1 h-4 bg-current rounded-full ${isProcessing ? 'animate-pulse' : 'animate-bounce'} delay-150`}></div>
-              <div className={`w-1 h-3 bg-current rounded-full ${isProcessing ? 'animate-pulse' : 'animate-bounce'} delay-225`}></div>
-              <div className={`w-1 h-2 bg-current rounded-full ${isProcessing ? 'animate-pulse' : 'animate-bounce'} delay-300`}></div>
-            </div>
+            <>
+              <div className="flex items-center justify-center space-x-0.5 mb-1">
+                {/* Audio waveform visualization */}
+                <div className={`w-1 h-3 bg-current rounded-full ${isProcessing ? 'animate-pulse' : 'animate-bounce'} delay-0`}></div>
+                <div className={`w-1 h-5 bg-current rounded-full ${isProcessing ? 'animate-pulse' : 'animate-bounce'} delay-75`}></div>
+                <div className={`w-1 h-4 bg-current rounded-full ${isProcessing ? 'animate-pulse' : 'animate-bounce'} delay-150`}></div>
+                <div className={`w-1 h-3 bg-current rounded-full ${isProcessing ? 'animate-pulse' : 'animate-bounce'} delay-225`}></div>
+                <div className={`w-1 h-2 bg-current rounded-full ${isProcessing ? 'animate-pulse' : 'animate-bounce'} delay-300`}></div>
+              </div>
+              <span className="text-xs font-bold">STOP</span>
+            </>
           ) : (
-            <svg 
-              className="w-5 h-5 group-hover:scale-110 transition-transform duration-200" 
-              fill="currentColor" 
-              viewBox="0 0 24 24"
-            >
-              <path d="M12 2C13.1 2 14 2.9 14 4V12C14 13.1 13.1 14 12 14C10.9 14 10 13.1 10 12V4C10 2.9 10.9 2 12 2ZM19 10V12C19 15.3 16.3 18 13 18V20H18V22H6V20H11V18C7.7 18 5 15.3 5 12V10H7V12C7 14.2 8.8 16 11 16H13C15.2 16 17 14.2 17 12V10H19Z"/>
-            </svg>
+            <>
+              <svg 
+                className="w-6 h-6 group-hover:scale-110 transition-transform duration-200 mb-1" 
+                fill="currentColor" 
+                viewBox="0 0 24 24"
+              >
+                <path d="M12 2C13.1 2 14 2.9 14 4V12C14 13.1 13.1 14 12 14C10.9 14 10 13.1 10 12V4C10 2.9 10.9 2 12 2ZM19 10V12C19 15.3 16.3 18 13 18V20H18V22H6V20H11V18C7.7 18 5 15.3 5 12V10H7V12C7 14.2 8.8 16 11 16H13C15.2 16 17 14.2 17 12V10H19Z"/>
+              </svg>
+              <span className="text-xs font-bold">VOICE</span>
+            </>
           )}
         </div>
 
