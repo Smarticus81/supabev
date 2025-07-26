@@ -182,11 +182,8 @@ export function VoiceControlButton({
       console.log('Tab is hidden, pausing voice agent...');
       // Optional: Add logic to pause or gracefully handle the agent when tab is not visible
     } else {
-      console.log('Tab is visible, ensuring voice agent is active...');
-      // Optional: Add logic to resume or re-initialize the agent
-      if (isWakeWordMode && !isListening) {
-        startWakeWordDetection();
-      }
+      console.log('Tab is visible, voice agent remains user-controlled...');
+      // Voice control is now completely user-initiated - no auto-restart
     }
   };
 
@@ -522,6 +519,7 @@ export function VoiceControlButton({
       console.log('📝 Created WebRTC offer');
 
       // Send offer to OpenAI Realtime API directly
+      console.log('📤 Sending WebRTC offer to OpenAI...');
       const response = await fetch(`https://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-12-17`, {
         method: 'POST',
         headers: {
@@ -531,6 +529,7 @@ export function VoiceControlButton({
         body: pc.localDescription?.sdp
       });
 
+      console.log('📥 OpenAI response status:', response.status);
       if (!response.ok) {
         const errorText = await response.text();
         let errorMessage = `WebRTC setup failed: ${response.status}`;
@@ -553,23 +552,28 @@ export function VoiceControlButton({
       }
 
       const answerSdp = await response.text();
+      console.log('📝 Setting remote description...');
       await pc.setRemoteDescription({
         type: 'answer',
         sdp: answerSdp
       });
 
-      console.log('✅ WebRTC connection established');
+      console.log('✅ WebRTC connection established, waiting for connection state...');
       setError(null);
       setApiKeyValid(true);
 
       // Wait for connection to be fully established
+      console.log('⏳ Waiting for WebRTC connection to be ready...');
       await new Promise((resolve, reject) => {
         const timeout = setTimeout(() => {
+          console.error(`❌ Connection timeout. Final state: ${pc.connectionState}`);
           reject(new Error(`Connection timeout. State: ${pc.connectionState}`));
         }, 10000);
 
         const checkConnection = () => {
+          console.log('🔍 Checking connection state:', pc.connectionState);
           if (pc.connectionState === 'connected') {
+            console.log('🎉 WebRTC connection fully established!');
             clearTimeout(timeout);
             resolve(undefined);
           }
