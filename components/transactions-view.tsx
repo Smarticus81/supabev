@@ -207,39 +207,31 @@ export default function TransactionsView() {
 
   return (
     <div className="h-full flex flex-col">
-      {/* Minimal Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center space-x-4">
-          <h1 className="text-2xl font-bold text-gray-800">Transactions</h1>
+      {/* Compact header optimized for iPad Mini */}
+      <div className="flex items-center justify-between mb-4 px-1">
+        <div className="flex items-center space-x-3">
+          <h1 className="text-lg font-semibold text-gray-800">Transactions</h1>
           <Button
             onClick={fetchTransactions}
             variant="outline"
             size="sm"
-            className="h-9 w-9 p-0 border-gray-200 hover:bg-gray-50 transition-all duration-200"
+            className="h-7 w-7 p-0 border-gray-200 hover:bg-gray-50 transition-all duration-200"
+            disabled={isLoading}
           >
-            <RefreshCw className="h-4 w-4" />
+            <RefreshCw className={`h-3 w-3 ${isLoading ? 'animate-spin' : ''}`} />
           </Button>
         </div>
-        <Button
-          onClick={() => {
-            localStorage.removeItem('beverage_pos_auth')
-            window.location.href = '/landing'
-          }}
-          variant="outline"
-          size="sm"
-          className="flex items-center space-x-2 border-red-200 text-red-600 hover:bg-red-50 transition-all duration-200"
-        >
-          <LogOut className="h-4 w-4" />
-          <span>Logout</span>
-        </Button>
+        <div className="text-xs text-gray-500">
+          Updated: {lastUpdated.toLocaleTimeString()}
+        </div>
       </div>
 
-      {/* Simple Time Filters */}
-      <div className="mb-6">
+      {/* Compact time filters */}
+      <div className="mb-4">
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="bg-gray-100">
+          <TabsList className="bg-gray-100 h-8">
             {timeFilters.map((filter) => (
-              <TabsTrigger key={filter} value={filter} className="px-4 capitalize">
+              <TabsTrigger key={filter} value={filter} className="px-3 py-1 text-xs capitalize">
                 {filter}
               </TabsTrigger>
             ))}
@@ -247,62 +239,85 @@ export default function TransactionsView() {
         </Tabs>
       </div>
 
-      {/* Transactions Table */}
-      <Card className="flex-1">
+      {/* Compact stats cards - iPad Mini optimized */}
+      <div className="grid grid-cols-3 gap-3 mb-4">
+        <Card className="border border-gray-100">
+          <CardContent className="p-3">
+            <div className="text-xs text-gray-500 mb-1">Revenue</div>
+            <div className="text-sm font-semibold text-gray-900">{formatCurrency(stats.totalRevenue)}</div>
+          </CardContent>
+        </Card>
+        <Card className="border border-gray-100">
+          <CardContent className="p-3">
+            <div className="text-xs text-gray-500 mb-1">Orders</div>
+            <div className="text-sm font-semibold text-gray-900">{stats.totalOrders}</div>
+          </CardContent>
+        </Card>
+        <Card className="border border-gray-100">
+          <CardContent className="p-3">
+            <div className="text-xs text-gray-500 mb-1">Avg Order</div>
+            <div className="text-sm font-semibold text-gray-900">{formatCurrency(stats.averageOrder)}</div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Compact transactions table */}
+      <Card className="flex-1 border border-gray-100">
         <CardContent className="p-0">
-          <ScrollArea className="h-[calc(100vh-400px)]">
+          <ScrollArea className="h-[calc(100vh-300px)]">
             <Table>
               <TableHeader>
-                <TableRow>
-                  <TableHead>Order ID</TableHead>
-                  <TableHead>Customer</TableHead>
-                  <TableHead>Items</TableHead>
-                  <TableHead className="text-right">Total</TableHead>
-                  <TableHead>Payment</TableHead>
-                  <TableHead>Date</TableHead>
+                <TableRow className="border-gray-100">
+                  <TableHead className="py-2 text-xs">ID</TableHead>
+                  <TableHead className="py-2 text-xs">Customer</TableHead>
+                  <TableHead className="py-2 text-xs">Items</TableHead>
+                  <TableHead className="py-2 text-xs text-right">Total</TableHead>
+                  <TableHead className="py-2 text-xs">Date</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredTransactions.map((transaction) => (
-                  <TableRow key={transaction.id}>
-                    <TableCell className="font-medium">{transaction.id}</TableCell>
-                    <TableCell>
-                      {transaction.customerName || "Walk-in Customer"}
+                  <TableRow key={transaction.id} className="border-gray-50 hover:bg-gray-50/50">
+                    <TableCell className="py-2 text-xs font-medium">#{transaction.id}</TableCell>
+                    <TableCell className="py-2 text-xs">
+                      {transaction.customerName || "Walk-in"}
                     </TableCell>
-                    <TableCell>
-                      <div className="text-sm font-medium">
+                    <TableCell className="py-2">
+                      <div className="text-xs font-medium">
                         {(transaction.items?.length || transaction.rawItems?.length || 0)} items
                       </div>
                       {((transaction.items && transaction.items.length) || (transaction.rawItems && transaction.rawItems.length)) ? (
-                        <div className="text-xs text-gray-500 whitespace-nowrap overflow-hidden text-ellipsis max-w-[200px]">
+                        <div className="text-xs text-gray-500 truncate max-w-[120px]">
                           {(transaction.items || transaction.rawItems)
+                            .slice(0, 2)
                             .map((item: any) => {
                               if (typeof item === 'string') {
                                 return item
                               }
                               const name = item.name || item.drink_name || item.item_name || 'Item'
-                              const qty = item.quantity || item.qty || 1
-                              return `${name} x${qty}`
+                              return name
                             })
                             .join(', ')}
+                          {(transaction.items || transaction.rawItems).length > 2 && '...'}
                         </div>
                       ) : null}
                     </TableCell>
-                    <TableCell className="text-right font-semibold">
+                    <TableCell className="py-2 text-xs text-right font-semibold">
                       {formatCurrency(transaction.total || 0)}
                     </TableCell>
-                    <TableCell>
-                      <Badge variant="outline">
-                        {transaction.paymentMethod || 'Cash'}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <div className="text-sm">
-                        {formatShortDate(transaction.created_at || transaction.timestamp)}
-                      </div>
+                    <TableCell className="py-2 text-xs">
+                      <div>{formatShortDate(transaction.created_at || transaction.timestamp)}</div>
+                      <div className="text-xs text-gray-400">{formatTime(transaction.created_at || transaction.timestamp)}</div>
                     </TableCell>
                   </TableRow>
                 ))}
+                {filteredTransactions.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={5} className="py-8 text-center text-xs text-gray-500">
+                      No transactions found
+                    </TableCell>
+                  </TableRow>
+                )}
               </TableBody>
             </Table>
           </ScrollArea>

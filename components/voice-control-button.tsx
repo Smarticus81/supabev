@@ -91,9 +91,7 @@ export function VoiceControlButton({
     glass: isDarkMode ? 'bg-slate-800/30 backdrop-blur-md' : 'bg-white/30 backdrop-blur-md'
   };
   
-  // Cart state management
-  const [cartItems, setCartItems] = useState<any[]>([]);
-  const [cartTotal, setCartTotal] = useState(0);
+  // Removed local cart state - cart is managed by main page only
   
   // Response queuing system to prevent overlap
   const [isProcessingFunction, setIsProcessingFunction] = useState(false);
@@ -105,7 +103,7 @@ export function VoiceControlButton({
     voice: 'alloy',
     rate: 1.4, // Faster speech speed (1.4x normal)
     temperature: 0.6, // Minimum required by OpenAI Realtime API
-    vad_threshold: 0.15, // Much more sensitive voice detection for better wake word response
+    vad_threshold: 0.4, // Very sensitive voice detection for excellent wake word response
     prefix_padding: 100, // Reduced padding for faster response
     silence_duration: 200, // Shorter silence detection for quicker responses
     max_tokens: 2500, // Increased token limit
@@ -264,7 +262,7 @@ export function VoiceControlButton({
             voice: configData.tts_voice || configData.voice || 'alloy',
             rate: configData.rate || 1.0,
             temperature: configData.temperature || 0.5,
-            vad_threshold: configData.vad_threshold || 0.15, // Lower threshold for better sensitivity
+            vad_threshold: configData.vad_threshold || 0.4, // Higher threshold for better sensitivity
             prefix_padding: configData.prefix_padding || 200,
             silence_duration: configData.silence_duration || 300,
             max_tokens: configData.max_tokens || 1500,
@@ -282,7 +280,7 @@ export function VoiceControlButton({
             voice: configData.voice,
             rate: configData.rate || 1.0,
             temperature: configData.temperature || 0.5,
-            vad_threshold: configData.vad_threshold || 0.15, // Lower threshold for better sensitivity
+            vad_threshold: configData.vad_threshold || 0.4, // Higher threshold for better sensitivity
             prefix_padding: configData.prefix_padding || 200,
             silence_duration: configData.silence_duration || 300,
             max_tokens: configData.max_tokens || 1500,
@@ -1825,31 +1823,32 @@ Remember: Create the perfect illusion of instant response while maintaining natu
             // Reset processing and speculative states
             setIsProcessingFunction(false);
             
-            // 🚀 IMMEDIATE UI UPDATES - No waiting for server broadcasts
-            if (currentFunctionCall.current?.name === 'add_drink_to_cart' && result.success) {
-              // Immediately update cart UI with optimistic data
-              const drinkName = (parsedArguments as any).drink_name;
-              const quantity = (parsedArguments as any).quantity || 1;
-              console.log(`🛒 Optimistically adding ${quantity}x ${drinkName} to cart UI`);
-              
-              // Trigger immediate cart refresh
-              updateCartDisplay();
-              
-              // Also broadcast to other components
-              window.dispatchEvent(new CustomEvent('cart-updated', { 
-                detail: { action: 'add', drink: drinkName, quantity } 
-              }));
-            }
-            
-            // Special handling for process_order - clear cart immediately since order is complete
+              // 🚀 IMMEDIATE UI UPDATES - No waiting for server broadcasts
+              if (currentFunctionCall.current?.name === 'add_drink_to_cart' && result.success) {
+                // Immediately update cart UI with optimistic data
+                const drinkName = (parsedArguments as any).drink_name;
+                const quantity = (parsedArguments as any).quantity || 1;
+                console.log(`🛒 Optimistically adding ${quantity}x ${drinkName} to cart UI`);
+                
+                // Trigger immediate cart refresh and broadcast
+                setTimeout(() => {
+                  updateCartDisplay();
+                }, 50); // Small delay to ensure server state is updated
+                
+                // Also broadcast to other components using the correct event names
+                window.dispatchEvent(new CustomEvent('realtime-cart_update', { 
+                  detail: { action: 'add', drink: drinkName, quantity } 
+                }));
+              }            // Special handling for process_order - clear cart immediately since order is complete
             if (currentFunctionCall.current?.name === 'process_order') {
               console.log('🔄 Order processed, clearing cart state immediately');
               // Clear local cart state immediately for better UX
-              setCartItems([]);
-              setCartTotal(0);
+              // Cart cleared - event will be broadcast to main page
               
-              // Broadcast order completion
-              window.dispatchEvent(new CustomEvent('order-completed', { detail: result }));
+              // Broadcast order completion using the correct event name
+              window.dispatchEvent(new CustomEvent('realtime-order_update', { 
+                detail: { type: 'order_completed', ...result } 
+              }));
               
               // Also update from server to ensure sync, with multiple attempts if needed
               setTimeout(() => updateCartDisplay(), 100);
@@ -1857,7 +1856,10 @@ Remember: Create the perfect illusion of instant response while maintaining natu
               setTimeout(() => updateCartDisplay(), 1000);
             } else if (["add_drink_to_cart", "remove_drink_from_cart", "cart_view", "clear_cart"].includes(currentFunctionCall.current?.name || '')) {
               console.log('🔄 Updating cart display after function:', currentFunctionCall.current?.name);
-              updateCartDisplay();
+              // Always update cart display and broadcast for cart operations
+              setTimeout(() => {
+                updateCartDisplay();
+              }, 50);
             }
             
             // Send the actual result back to the conversation
@@ -2202,12 +2204,48 @@ Remember: Create the perfect illusion of instant response while maintaining natu
         
         console.log('👂 Wake word transcript:', transcript);
         
-        // Check for wake words: "hey bev", "bev", "beverage"
-        const wakeWords = ['hey bev', 'bev', 'beverage'];
-        const detectedWakeWord = wakeWords.find(word => transcript.includes(word));
+        // Check for wake words with variations and partial matches
+        const wakeWords = [
+          'hey bev', 'bev', 'beverage',
+          'hey babe', 'babe',  // Common misinterpretations
+          'hey beth', 'beth',  // Another common misinterpretation
+          'hey dev', 'dev',    // Technical misinterpretation
+          'hey rev', 'rev',    // Similar sounding
+          'hey beb', 'beb',    // Partial match
+          'hey bed', 'bed',    // Close pronunciation
+          'hey best', 'best',  // Similar ending
+          'hey bet', 'bet',    // Short variation
+          'bevvy', 'bevy',     // Nickname variations
+          'beverage pos', 'pos', // System specific
+          'hello bev', 'hi bev', // Alternative greetings
+          'okay bev', 'ok bev', // Alternative wake phrases
+          'yo bev', 'hey bevvy', // Casual variations
+          'bevy', 'bebby'      // Cute variations
+        ];
+        
+        // More flexible matching - check if any wake word is contained in transcript
+        const detectedWakeWord = wakeWords.find(word => {
+          // Direct substring match
+          if (transcript.includes(word)) return true;
+          
+          // Fuzzy matching for similar sounding words
+          const words = transcript.split(' ');
+          for (const transcriptWord of words) {
+            // Check for words that start with 'bev', 'bab', 'bet', etc.
+            if (transcriptWord.startsWith('bev') || 
+                transcriptWord.startsWith('bab') || 
+                transcriptWord.startsWith('bet') ||
+                transcriptWord.startsWith('bed') ||
+                transcriptWord.startsWith('beb')) {
+              console.log('🎯 Fuzzy wake word match:', transcriptWord, 'matches pattern for', word);
+              return true;
+            }
+          }
+          return false;
+        });
         
         if (detectedWakeWord) {
-          console.log('🎯 Wake word detected:', detectedWakeWord);
+          console.log('🎯 Wake word detected:', detectedWakeWord, 'from transcript:', transcript);
           wakeWordTimeRef.current = Date.now();
           
           // Immediately set flags to prevent duplicate triggering
@@ -2233,6 +2271,11 @@ Remember: Create the perfect illusion of instant response while maintaining natu
           setTimeout(() => {
             startFullConversationMode();
           }, 100); // Minimal delay for immediate response
+        } else {
+          console.log('⚠️ No wake word detected in transcript:', transcript);
+          // Log what words were actually detected for debugging
+          const words = transcript.split(' ');
+          console.log('🔍 Individual words detected:', words);
         }
       };
       
@@ -2643,20 +2686,64 @@ Remember: Create the perfect illusion of instant response while maintaining natu
   // updateCartDisplay function must remain here, it was accidentally removed.
   const updateCartDisplay = async () => {
     try {
-      const response = await fetch('/api/voice-advanced', {
+      // First try the direct API for immediate response
+      const directResponse = await fetch('/api/voice-cart-direct', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           tool: 'cart_view',
-          parameters: { clientId: 'default' } // Add consistent client ID
+          parameters: { clientId: 'default' }
         })
       });
       
-      if (response.ok) {
-        const mcpResult = await response.json();
+      if (directResponse.ok) {
+        const directResult = await directResponse.json();
+        console.log('🛒 Direct cart data:', directResult);
+        
+        if (directResult.success && directResult.cart) {
+          // Only broadcast to main page - no local state management
+          console.log('🚨 [DEBUG] About to broadcast cart update:', directResult.cart);
+          console.log('🚨 [DEBUG] Window object exists:', !!window);
+          console.log('🚨 [DEBUG] CustomEvent exists:', !!window.CustomEvent);
+          
+          const cartEvent = new CustomEvent('realtime-cart_update', {
+            detail: {
+              type: 'cart_update',
+              payload: {
+                items: directResult.cart,
+                total: directResult.total || 0
+              }
+            }
+          });
+          
+          console.log('🚨 [DEBUG] Created event:', cartEvent);
+          window.dispatchEvent(cartEvent);
+          console.log('📡 [Voice-Direct] Broadcasted cart update to main page:', directResult.cart.length, 'items');
+          
+          // Additional verification
+          setTimeout(() => {
+            console.log('🚨 [DEBUG] Checking if main page received event after 100ms...');
+          }, 100);
+          
+          return; // Success with direct API
+        }
+      }
+      
+      // Fallback to MCP API if direct API fails
+      const mcpResponse = await fetch('/api/voice-advanced', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tool: 'cart_view',
+          parameters: { clientId: 'default' }
+        })
+      });
+      
+      if (mcpResponse.ok) {
+        const mcpResult = await mcpResponse.json();
         console.log('🛒 MCP cart data:', mcpResult);
         
-        // Handle both MCP result formats
+        // Handle MCP result formats
         let cartText = '';
         if (mcpResult.result && mcpResult.result.content && mcpResult.result.content[0]) {
           cartText = mcpResult.result.content[0].text;
@@ -2669,10 +2756,18 @@ Remember: Create the perfect illusion of instant response while maintaining natu
           const items = [];
           let total = 0;
           
-          // Check if cart is explicitly empty
+          // Check if cart is explicitly empty - broadcast empty cart to main page
           if (cartText.toLowerCase().includes('empty') || cartText.toLowerCase().includes('no items')) {
-            setCartItems([]);
-            setCartTotal(0);
+            window.dispatchEvent(new CustomEvent('realtime-cart_update', {
+              detail: {
+                type: 'cart_update',
+                payload: {
+                  items: [],
+                  total: 0
+                }
+              }
+            }));
+            console.log('📡 [Voice] Broadcasted empty cart to main page');
             return;
           }
           
@@ -2686,7 +2781,7 @@ Remember: Create the perfect illusion of instant response while maintaining natu
                 quantity: parseInt(quantity),
                 price: price,
                 subtotal: parseFloat(subtotal),
-                category: 'Beverage' // Assuming default category
+                category: 'Beverage'
               });
             }
             const totalMatch = line.match(/Total:\s+\$(\d+\.\d+)/);
@@ -2695,12 +2790,29 @@ Remember: Create the perfect illusion of instant response while maintaining natu
             }
           }
           
-          setCartItems(items);
-          setCartTotal(total);
+          // Only broadcast to main page - no local state management
+          window.dispatchEvent(new CustomEvent('realtime-cart_update', {
+            detail: {
+              type: 'cart_update',
+              payload: {
+                items: items,
+                total: total
+              }
+            }
+          }));
+          console.log('📡 [Voice] Broadcasted cart update to main page:', items.length, 'items, total:', total);
         } else {
-          // No cart text found, cart is empty
-          setCartItems([]);
-          setCartTotal(0);
+          // No cart text found, cart is empty - broadcast empty cart to main page
+          window.dispatchEvent(new CustomEvent('realtime-cart_update', {
+            detail: {
+              type: 'cart_update',
+              payload: {
+                items: [],
+                total: 0
+              }
+            }
+          }));
+          console.log('📡 [Voice] Broadcasted empty cart to main page');
         }
       }
     } catch (error) {

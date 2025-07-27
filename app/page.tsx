@@ -128,6 +128,12 @@ export default function Home() {
   const [drinksLoading, setDrinksLoading] = useState(false)
   const realTimeManager = useRef<RealTimeManager>()
 
+  // Enhanced real-time connection with multiple fallback mechanisms
+  const [optimisticCart, setOptimisticCart] = useState<any[]>([])
+  const [isOptimisticUpdate, setIsOptimisticUpdate] = useState(false)
+  const pollingInterval = useRef<NodeJS.Timeout>()
+  const lastSyncTime = useRef<number>(0)
+
   // Fetch drinks data
   const fetchDrinks = async () => {
     setDrinksLoading(true)
@@ -179,43 +185,222 @@ export default function Home() {
     }
   }, [isAuthenticated])
 
-  // Initialize real-time connection - always called
+  // Enhanced real-time connection with multiple fallback mechanisms
   useEffect(() => {
     if (!isAuthenticated) return
 
-    realTimeManager.current = RealTimeManager.getInstance()
-    realTimeManager.current.connect()
+    console.log('🚀 [HYBRID] Initializing enhanced real-time system...')
+    
+    // Method 1: Enhanced SSE Connection
+    let eventSource: EventSource | null = null
+    
+    const connectSSE = () => {
+      try {
+        eventSource = new EventSource('/api/realtime')
+        
+        eventSource.onopen = () => {
+          console.log('📡 [SSE] Enhanced real-time connection established')
+        }
 
-    // Subscribe to cart updates
-    const handleCartUpdate = (data: any) => {
-      setOrders(data.items || [])
+        eventSource.onmessage = (event) => {
+          try {
+            const message = JSON.parse(event.data)
+            handleRealTimeMessage(message)
+          } catch (error) {
+            console.error('📡 [SSE] Message parse error:', error)
+          }
+        }
+
+        eventSource.onerror = () => {
+          console.warn('📡 [SSE] Connection error, will retry...')
+        }
+      } catch (error) {
+        console.error('📡 [SSE] Connection failed:', error)
+      }
     }
 
-    // Subscribe to inventory updates
-    const handleInventoryUpdate = (data: any) => {
-      // Trigger inventory refresh across components
-      window.dispatchEvent(new CustomEvent('inventory-updated', { detail: data }))
-      // Also refresh drinks data
-      fetchDrinks().catch(console.error)
+    // Method 2: Custom Event Listeners (for immediate local updates)
+    const handleCartUpdate = (event: any) => {
+      console.log('🚨 [DEBUG-MAIN] Cart update event received!')
+      console.log('🎯 [EVENT] Direct cart update received:', event.detail)
+      console.log('🎯 [EVENT] Current orders before update:', orders.length, 'items')
+      console.log('🎯 [EVENT] Is optimistic update active:', isOptimisticUpdate)
+      console.log('🚨 [DEBUG-MAIN] Event detail structure:', JSON.stringify(event.detail, null, 2))
+      
+      // Handle both old and new event formats
+      const data = event.detail.payload || event.detail
+      console.log('🚨 [DEBUG-MAIN] Processed data for updateCartFromData:', data)
+      updateCartFromData(data, 'event')
     }
 
-    // Subscribe to order updates
-    const handleOrderUpdate = (data: any) => {
-      // Trigger order refresh across components
-      window.dispatchEvent(new CustomEvent('order-updated', { detail: data }))
+    const handleOrderUpdate = (event: any) => {
+      console.log('📦 [EVENT] Direct order update received:', event.detail)
+      if (event.detail.type === 'order_completed') {
+        setOrders([])
+        setOptimisticCart([])
+        console.log('✅ Order completed, cart cleared via event')
+      }
     }
 
-    realTimeManager.current.subscribe('cart_update', handleCartUpdate)
-    realTimeManager.current.subscribe('inventory_update', handleInventoryUpdate)
-    realTimeManager.current.subscribe('order_update', handleOrderUpdate)
+    // Method 3: Polling Fallback
+    const startPolling = () => {
+      if (pollingInterval.current) clearInterval(pollingInterval.current)
+      
+      pollingInterval.current = setInterval(async () => {
+        try {
+          // Only poll if we haven't received updates recently
+          if (Date.now() - lastSyncTime.current > 5000) {
+            console.log('🔄 [POLL] Checking for cart updates...')
+            await syncCartFromAPI()
+          }
+        } catch (error) {
+          console.error('🔄 [POLL] Error:', error)
+        }
+      }, 3000) // Poll every 3 seconds as fallback
+    }
+
+    // Method 4: WebSocket Connection (if available)
+    let websocket: WebSocket | null = null
+    const connectWebSocket = () => {
+      try {
+        // Try to connect to WebSocket if available
+        const wsUrl = `ws${window.location.protocol === 'https:' ? 's' : ''}://${window.location.host}/api/ws`
+        websocket = new WebSocket(wsUrl)
+        
+        websocket.onopen = () => {
+          console.log('🔌 [WS] WebSocket connected')
+        }
+
+        websocket.onmessage = (event) => {
+          try {
+            const message = JSON.parse(event.data)
+            handleRealTimeMessage(message)
+          } catch (error) {
+            console.error('🔌 [WS] Message parse error:', error)
+          }
+        }
+
+        websocket.onerror = () => {
+          console.warn('🔌 [WS] Connection failed, falling back to SSE')
+        }
+      } catch (error) {
+        console.warn('🔌 [WS] WebSocket not available, using SSE')
+      }
+    }
+
+    // Initialize all connection methods
+    connectSSE()
+    connectWebSocket()
+    startPolling()
+
+    // Add event listeners
+    console.log('🚨 [DEBUG-MAIN] Adding event listeners for cart updates...')
+    window.addEventListener('realtime-cart_update', handleCartUpdate)
+    window.addEventListener('realtime-order_update', handleOrderUpdate)
+    
+    // Handle force refresh events from UI components
+    const handleForceRefresh = async () => {
+      console.log('� [FORCE-REFRESH] Manual cart refresh requested')
+      await syncCartFromAPI()
+    }
+    window.addEventListener('force-cart-refresh', handleForceRefresh)
+    console.log('�🚨 [DEBUG-MAIN] Event listeners added successfully')
 
     return () => {
-      realTimeManager.current?.unsubscribe('cart_update', handleCartUpdate)
-      realTimeManager.current?.unsubscribe('inventory_update', handleInventoryUpdate)
-      realTimeManager.current?.unsubscribe('order_update', handleOrderUpdate)
-      realTimeManager.current?.disconnect()
+      // Cleanup all connections
+      if (eventSource) {
+        eventSource.close()
+      }
+      if (websocket) {
+        websocket.close()
+      }
+      if (pollingInterval.current) {
+        clearInterval(pollingInterval.current)
+      }
+      window.removeEventListener('realtime-cart_update', handleCartUpdate)
+      window.removeEventListener('realtime-order_update', handleOrderUpdate)
+      window.removeEventListener('force-cart-refresh', handleForceRefresh)
     }
   }, [isAuthenticated])
+
+  // Handle real-time messages from any source
+  const handleRealTimeMessage = (message: any) => {
+    lastSyncTime.current = Date.now()
+    
+    switch (message.type) {
+      case 'cart_update':
+        updateCartFromData(message.payload, 'realtime')
+        break
+      case 'order_update':
+        if (message.payload.type === 'order_completed') {
+          setOrders([])
+          setOptimisticCart([])
+          console.log('✅ Order completed, cart cleared via realtime')
+        }
+        break
+      case 'connection':
+        console.log('📡 [REALTIME] Connected:', message.payload.message)
+        break
+      case 'heartbeat':
+        // Update last sync time on heartbeat
+        lastSyncTime.current = Date.now()
+        break
+    }
+  }
+
+  // Update cart from data with source tracking - prevent duplicates
+  const updateCartFromData = (data: any, source: string) => {
+    console.log(`🛒 [${source.toUpperCase()}] Updating cart:`, data)
+    
+    try {
+      if (data && Array.isArray(data.items)) {
+        setOrders(data.items)
+        setOptimisticCart(data.items)
+        setIsOptimisticUpdate(false)
+        console.log(`✅ [${source.toUpperCase()}] Cart updated with ${data.items.length} items`)
+      } else if (data && data.items) {
+        const items = Array.isArray(data.items) ? data.items : []
+        setOrders(items)
+        setOptimisticCart(items)
+        setIsOptimisticUpdate(false)
+        console.log(`✅ [${source.toUpperCase()}] Cart updated with ${items.length} items`)
+      } else {
+        // Handle empty cart case
+        setOrders([])
+        setOptimisticCart([])
+        setIsOptimisticUpdate(false)
+        console.log(`✅ [${source.toUpperCase()}] Cart cleared`)
+      }
+    } catch (error) {
+      console.error(`❌ [${source.toUpperCase()}] Cart update error:`, error)
+    }
+  }
+
+  // Sync cart from API (fallback method)
+  const syncCartFromAPI = async () => {
+    try {
+      const response = await fetch('/api/voice-cart-direct', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tool: 'cart_view',
+          parameters: { clientId: 'default' }
+        })
+      })
+      
+      if (response.ok) {
+        const result = await response.json()
+        if (result.success && result.cart) {
+          setOrders(result.cart)
+          setOptimisticCart(result.cart)
+          setIsOptimisticUpdate(false)
+          console.log(`🔄 [SYNC] Cart synchronized: ${result.cart.length} items`)
+        }
+      }
+    } catch (error) {
+      console.error('🔄 [SYNC] API sync failed:', error)
+    }
+  }
 
   // Ensure default view is 'items' only on initial load (handled by initialState)
 
@@ -242,62 +427,200 @@ export default function Home() {
   }
 
   const addToOrder = (drink: any) => {
-    // Add to cart via real-time API
-    fetch('/api/voice-cart', {
+    // Voice commands use real-time updates, manual clicks use optimistic updates
+    const isVoiceCommand = false // Manual click from UI
+    
+    if (isVoiceCommand) {
+      // For voice commands, rely on real-time updates only
+      console.log('🎙️ [VOICE] Adding via voice command, waiting for real-time update')
+      return
+    }
+    
+    // Optimistic Update for manual UI interactions only
+    setIsOptimisticUpdate(true)
+    const newItem = {
+      name: drink.name,
+      quantity: 1,
+      price: drink.price || 7.00,
+      category: 'Beverage'
+    }
+    
+    const existingIndex = orders.findIndex(item => item.name === drink.name)
+    let newOrders
+    
+    if (existingIndex >= 0) {
+      newOrders = [...orders]
+      newOrders[existingIndex].quantity += 1
+    } else {
+      newOrders = [...orders, newItem]
+    }
+    
+    setOrders(newOrders)
+    setOptimisticCart(newOrders)
+    console.log('⚡ [OPTIMISTIC] Added', drink.name, 'to cart immediately')
+
+    // Add to cart via direct real-time API (not MCP server)
+    fetch('/api/voice-cart-direct', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        action: 'add',
-        item: {
-          id: drink.id,
-          name: drink.name,
-          price: drink.price,
-          quantity: 1
+        tool: 'cart_add',
+        parameters: {
+          drink_name: drink.name,
+          quantity: 1,
+          clientId: 'default'
         }
       })
-    }).catch(console.error)
+    }).then(response => response.json())
+    .then(result => {
+      if (!result.success) {
+        // Revert optimistic update on failure
+        console.warn('❌ [OPTIMISTIC] Reverting add operation')
+        setOrders(optimisticCart)
+        setIsOptimisticUpdate(false)
+      }
+    }).catch(error => {
+      console.error('❌ [OPTIMISTIC] Add failed, reverting:', error)
+      setOrders(optimisticCart)
+      setIsOptimisticUpdate(false)
+    })
   }
 
   const removeFromOrder = (id: string) => {
-    // Remove from cart via real-time API
-    fetch('/api/voice-cart', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'remove',
-        itemId: id
+    const orderItem = orders[parseInt(id)];
+    if (orderItem) {
+      // Optimistic Update: Immediately update UI
+      setIsOptimisticUpdate(true)
+      const newOrders = orders.filter((_, index) => index !== parseInt(id))
+      setOrders(newOrders)
+      setOptimisticCart(newOrders)
+      console.log('⚡ [OPTIMISTIC] Removed', orderItem.name, 'from cart immediately')
+
+      // Remove from cart via direct real-time API
+      fetch('/api/voice-cart-direct', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tool: 'cart_remove',
+          parameters: {
+            drink_name: orderItem.name,
+            quantity: orderItem.quantity,
+            clientId: 'default'
+          }
+        })
+      }).then(response => response.json())
+      .then(result => {
+        if (!result.success) {
+          // Revert optimistic update on failure
+          console.warn('❌ [OPTIMISTIC] Reverting remove operation')
+          setOrders(optimisticCart)
+          setIsOptimisticUpdate(false)
+        }
+      }).catch(error => {
+        console.error('❌ [OPTIMISTIC] Remove failed, reverting:', error)
+        setOrders(optimisticCart)
+        setIsOptimisticUpdate(false)
       })
-    }).catch(console.error)
+    }
   }
 
   const updateQuantity = (id: string, quantity: number) => {
     if (quantity === 0) {
       removeFromOrder(id)
     } else {
-      // Update quantity via real-time API
-      fetch('/api/voice-cart', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'update',
-          itemId: id,
-          quantity
-        })
-      }).catch(console.error)
+      const orderItem = orders[parseInt(id)];
+      if (orderItem) {
+        // Optimistic Update: Immediately update UI
+        setIsOptimisticUpdate(true)
+        const newOrders = [...orders]
+        const oldQuantity = newOrders[parseInt(id)].quantity
+        newOrders[parseInt(id)].quantity = quantity
+        setOrders(newOrders)
+        setOptimisticCart(newOrders)
+        console.log('⚡ [OPTIMISTIC] Updated', orderItem.name, 'quantity to', quantity)
+
+        const quantityDiff = quantity - oldQuantity;
+        if (quantityDiff > 0) {
+          // Add more
+          fetch('/api/voice-cart-direct', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              tool: 'cart_add',
+              parameters: {
+                drink_name: orderItem.name,
+                quantity: quantityDiff,
+                clientId: 'default'
+              }
+            })
+          }).catch(error => {
+            console.error('❌ [OPTIMISTIC] Quantity update failed, reverting:', error)
+            setOrders(optimisticCart)
+            setIsOptimisticUpdate(false)
+          })
+        } else if (quantityDiff < 0) {
+          // Remove some
+          fetch('/api/voice-cart-direct', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              tool: 'cart_remove',
+              parameters: {
+                drink_name: orderItem.name,
+                quantity: Math.abs(quantityDiff),
+                clientId: 'default'
+              }
+            })
+          }).catch(error => {
+            console.error('❌ [OPTIMISTIC] Quantity update failed, reverting:', error)
+            setOrders(optimisticCart)
+            setIsOptimisticUpdate(false)
+          })
+        }
+      }
     }
   }
 
   const completeOrder = async () => {
-    // Complete order via real-time API
-    fetch('/api/voice-cart', {
+    if (orders.length === 0) return
+
+    // Optimistic Update: Clear cart immediately
+    setIsOptimisticUpdate(true)
+    const currentOrders = [...orders]
+    setOrders([])
+    setOptimisticCart([])
+    console.log('⚡ [OPTIMISTIC] Order completed, cart cleared immediately')
+
+    // Complete order via direct real-time API
+    fetch('/api/voice-cart-direct', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        action: 'complete'
+        tool: 'cart_create_order',
+        parameters: {
+          clientId: 'default'
+        }
       })
-    }).then(() => {
-      alert('Order completed successfully!')
-    }).catch(console.error)
+    }).then(response => response.json())
+    .then(result => {
+      if (result.success) {
+        alert('Order completed successfully!')
+        setIsOptimisticUpdate(false)
+      } else {
+        // Revert optimistic update on failure
+        console.warn('❌ [OPTIMISTIC] Reverting order completion')
+        setOrders(currentOrders)
+        setOptimisticCart(currentOrders)
+        setIsOptimisticUpdate(false)
+        alert('Order failed. Please try again.')
+      }
+    }).catch(error => {
+      console.error('❌ [OPTIMISTIC] Order completion failed, reverting:', error)
+      setOrders(currentOrders)
+      setOptimisticCart(currentOrders)
+      setIsOptimisticUpdate(false)
+      alert('Order failed. Please try again.')
+    })
   }
 
   const navigation = [
@@ -326,11 +649,13 @@ export default function Home() {
                 isLoading={drinksLoading}
               />
             </div>
-            <div className="w-80 h-full flex flex-col">
+            {/* Subtle separator line between menu and cart */}
+            <div className="w-px bg-gradient-to-b from-transparent via-gray-200 to-transparent flex-shrink-0"></div>
+            <div className="w-64 h-full flex flex-col">
               <OrderPanel 
                 orders={orders}
-                onRemoveItem={removeFromOrder}
-                onUpdateQuantity={updateQuantity}
+                removeFromOrder={removeFromOrder}
+                updateQuantity={updateQuantity}
                 onCompleteOrder={completeOrder}
                 total={total}
               />
@@ -338,11 +663,20 @@ export default function Home() {
           </div>
         )
       case "items":
-        return <ItemsView />
+        return <ItemsView 
+          onAddToOrder={addToOrder}
+          searchQuery={searchQuery}
+          onSearchChange={setSearchQuery}
+          onRefresh={() => window.location.reload()}
+        />
       case "staff":
         return <StaffView />
       case "tabs":
-        return <TabsView />
+        return <TabsView 
+          currentCustomer="Walk-in Customer"
+          orders={orders}
+          total={total}
+        />
       case "events":
         return <EventsView />
       case "transactions":
@@ -350,7 +684,12 @@ export default function Home() {
       case "settings":
         return <SettingsView />
       default:
-        return <ItemsView />
+        return <ItemsView 
+          onAddToOrder={addToOrder}
+          searchQuery={searchQuery}
+          onSearchChange={setSearchQuery}
+          onRefresh={() => window.location.reload()}
+        />
     }
   }
 

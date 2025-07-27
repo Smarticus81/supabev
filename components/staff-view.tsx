@@ -107,27 +107,22 @@ export function StaffView() {
   return (
     <div className="h-full overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6 px-1">
-        <div className="flex items-center space-x-4">
-          <h1 className="text-2xl font-bold text-gray-800">Dashboard</h1>
+      <div className="flex items-center justify-between mb-4 px-1">
+        <div className="flex items-center space-x-3">
+          <h1 className="text-lg font-semibold text-gray-800">Dashboard</h1>
           <Button
             onClick={fetchAnalytics}
             variant="outline"
             size="sm"
-            className="h-9 w-9 p-0 border-gray-200 hover:bg-gray-50 transition-all duration-200"
+            className="h-7 w-7 p-0 border-gray-200 hover:bg-gray-50 transition-all duration-200"
+            disabled={isLoading}
           >
-            <RefreshCw className="h-4 w-4" />
+            <RefreshCw className={`h-3 w-3 ${isLoading ? 'animate-spin' : ''}`} />
           </Button>
         </div>
-        <Button
-          onClick={handleLogout}
-          variant="outline"
-          size="sm"
-          className="flex items-center space-x-2 border-red-200 text-red-600 hover:bg-red-50 transition-all duration-200"
-        >
-          <LogOut className="h-4 w-4" />
-          <span>Logout</span>
-        </Button>
+        <div className="text-xs text-gray-500">
+          Analytics
+        </div>
       </div>
 
       {/* Content */}

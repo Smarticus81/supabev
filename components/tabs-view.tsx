@@ -20,6 +20,7 @@ interface Tab {
   status: "Open" | "Closed"
   items: { name: string; quantity: number; price: number }[]
   createdAt: string
+  closedAt?: string
 }
 
 export default function TabsView({ currentCustomer, orders, total }: TabsViewProps) {
@@ -110,10 +111,10 @@ export default function TabsView({ currentCustomer, orders, total }: TabsViewPro
 
   const createNewTab = () => {
     if (newTabName.trim()) {
-      const newTab = {
+      const newTab: Tab = {
         id: `tab-${Date.now()}`,
         partyName: newTabName.trim(),
-        status: "Open",
+        status: "Open" as const,
         items: [],
         createdAt: new Date().toISOString(),
       }
@@ -197,29 +198,21 @@ export default function TabsView({ currentCustomer, orders, total }: TabsViewPro
     <div className="h-full flex flex-col bg-gray-50">
       {/* Minimal Header */}
       <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center space-x-4">
-          <h1 className="text-2xl font-bold text-gray-800">Tabs</h1>
+        <div className="flex items-center space-x-3">
+          <h1 className="text-lg font-semibold text-gray-800">Tabs</h1>
           <Button
             onClick={fetchTabs}
             variant="outline"
             size="sm"
-            className="h-9 w-9 p-0 border-gray-200 hover:bg-gray-50 transition-all duration-200"
+            className="h-7 w-7 p-0 border-gray-200 hover:bg-gray-50 transition-all duration-200"
+            disabled={isLoading}
           >
-            <RefreshCw className="h-4 w-4" />
+            <RefreshCw className={`h-3 w-3 ${isLoading ? 'animate-spin' : ''}`} />
           </Button>
         </div>
-        <Button
-          onClick={() => {
-            localStorage.removeItem('beverage_pos_auth')
-            window.location.href = '/landing'
-          }}
-          variant="outline"
-          size="sm"
-          className="flex items-center space-x-2 border-red-200 text-red-600 hover:bg-red-50 transition-all duration-200"
-        >
-          <LogOut className="h-4 w-4" />
-          <span>Logout</span>
-        </Button>
+        <div className="text-xs text-gray-500">
+          Open: {openTabs.length} • Closed: {closedTabs.length}
+        </div>
       </div>
 
       {/* Header with Tab Toggle */}

@@ -1,7 +1,43 @@
 import { NextRequest } from 'next/server';
 
+// Import the enhanced event manager for real-time updates
+let enhancedEventManager: any;
+try {
+  const { enhancedEventManager: eem } = require('../realtime/route');
+  enhancedEventManager = eem;
+} catch (error) {
+  console.warn('Enhanced EventManager not available, real-time updates disabled');
+}
+
 // Ultra-fast in-memory cart storage for voice operations
 const cartStorage = new Map<string, any[]>();
+
+// MCP Server URL for synchronization
+const MCP_SERVER_URL = 'http://localhost:7865';
+
+async function syncWithMCPServer(clientId: string, cart: any[]) {
+  try {
+    // Sync the cart state with MCP server to keep both systems aligned
+    const response = await fetch(MCP_SERVER_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        action: 'cart_sync',
+        clientId: clientId,
+        cart: cart
+      }),
+      timeout: 1000 // Quick timeout to not block voice responses
+    });
+    
+    if (response.ok) {
+      console.log('🔄 [SYNC] Cart synchronized with MCP server');
+    }
+  } catch (error) {
+    console.warn('⚠️ [SYNC] MCP server sync failed (non-blocking):', error.message);
+  }
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -36,6 +72,23 @@ export async function POST(request: NextRequest) {
   }
 }
 
+function broadcastCartUpdate(clientId: string, cart: any[]) {
+  if (enhancedEventManager) {
+    const total = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+    enhancedEventManager.broadcast('cart_update', {
+      items: cart,
+      total: total,
+      clientId: clientId
+    });
+    console.log(`📡 [BROADCAST] Cart update sent: ${cart.length} items, $${total.toFixed(2)}`);
+  }
+  
+  // Also sync with MCP server in the background (non-blocking)
+  syncWithMCPServer(clientId, cart).catch(() => {
+    // Silent fail - direct API should work even if MCP is down
+  });
+}
+
 function handleCartAdd(clientId: string, params: any) {
   const { drink_name, quantity = 1 } = params;
   
@@ -65,6 +118,9 @@ function handleCartAdd(clientId: string, params: any) {
   const total = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
 
   console.log(`🛒 [DIRECT] Added ${quantity}x ${drink_name} to cart (${cart.length} items, $${total.toFixed(2)})`);
+
+  // Broadcast real-time update
+  broadcastCartUpdate(clientId, cart);
 
   return Response.json({
     success: true,
@@ -102,6 +158,9 @@ function handleCartView(clientId: string) {
 function handleCartClear(clientId: string) {
   cartStorage.set(clientId, []);
   
+  // Broadcast real-time update
+  broadcastCartUpdate(clientId, []);
+  
   return Response.json({
     success: true,
     message: 'Cart cleared',
@@ -124,6 +183,9 @@ function handleCartRemove(clientId: string, params: any) {
 
   cartStorage.set(clientId, cart);
   const total = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+
+  // Broadcast real-time update
+  broadcastCartUpdate(clientId, cart);
 
   return Response.json({
     success: true,
@@ -148,6 +210,18 @@ async function handleCreateOrder(clientId: string, params: any) {
   cartStorage.set(clientId, []);
   
   console.log(`📦 [DIRECT] Order ${orderId} created with ${cart.length} items ($${total.toFixed(2)})`);
+
+  // Broadcast order completion and cart clear
+  if (enhancedEventManager) {
+    enhancedEventManager.broadcast('order_update', {
+      type: 'order_completed',
+      orderId: orderId,
+      total: total,
+      items: cart
+    });
+    // Also broadcast cart clear
+    broadcastCartUpdate(clientId, []);
+  }
 
   return Response.json({
     success: true,
