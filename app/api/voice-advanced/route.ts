@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { invokeMcpTool } from '../../../server/mcp-client';
+import { invokeMcpToolDirect } from '../../../lib/mcp-direct';
 
 // Premium OpenAI WebRTC Voice API - Single Consolidated Endpoint
 export async function POST(request: NextRequest) {
@@ -22,8 +22,8 @@ export async function POST(request: NextRequest) {
       clientId: parameters?.clientId || 'voice_default'
     };
     
-    // Call MCP server directly for ultra-low latency
-    const result = await invokeMcpTool(tool, enhancedParameters);
+    // Call MCP Direct for ultra-low latency (works on Vercel)
+    const result = await invokeMcpToolDirect(tool, enhancedParameters);
     
     // Enhanced response formatting for voice operations
     const response = {
