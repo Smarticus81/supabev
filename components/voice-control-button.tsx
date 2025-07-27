@@ -1792,16 +1792,22 @@ Remember: Create the perfect illusion of instant response while maintaining natu
         if (currentFunctionCall.current) {
           console.log('🔧 Executing function call:', currentFunctionCall.current.name);
           
-          // Execute the function call with proper function name using voice-advanced API
+          // 🚀 ULTRA-LOW LATENCY: Use direct cart API for cart operations
+          const isCartOperation = ['add_drink_to_cart', 'remove_drink_from_cart', 'clear_cart', 'process_order', 'cart_view'].includes(currentFunctionCall.current.name);
+          const apiEndpoint = isCartOperation ? '/api/voice-cart-direct' : '/api/voice-advanced';
+          
           const toolMap: { [key: string]: string } = {
             add_drink_to_cart: 'cart_add',
             remove_drink_from_cart: 'cart_remove',
             clear_cart: 'cart_clear',
             process_order: 'cart_create_order',
-            show_cart: 'cart_view',
+            cart_view: 'cart_view',
           };
           const backendTool = toolMap[currentFunctionCall.current.name] || currentFunctionCall.current.name;
-          fetch('/api/voice-advanced', {
+          
+          console.log(`🚀 [${isCartOperation ? 'DIRECT' : 'MCP'}] Calling ${apiEndpoint} for ${backendTool}`);
+          
+          fetch(apiEndpoint, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -1819,12 +1825,32 @@ Remember: Create the perfect illusion of instant response while maintaining natu
             // Reset processing and speculative states
             setIsProcessingFunction(false);
             
+            // 🚀 IMMEDIATE UI UPDATES - No waiting for server broadcasts
+            if (currentFunctionCall.current?.name === 'add_drink_to_cart' && result.success) {
+              // Immediately update cart UI with optimistic data
+              const drinkName = (parsedArguments as any).drink_name;
+              const quantity = (parsedArguments as any).quantity || 1;
+              console.log(`🛒 Optimistically adding ${quantity}x ${drinkName} to cart UI`);
+              
+              // Trigger immediate cart refresh
+              updateCartDisplay();
+              
+              // Also broadcast to other components
+              window.dispatchEvent(new CustomEvent('cart-updated', { 
+                detail: { action: 'add', drink: drinkName, quantity } 
+              }));
+            }
+            
             // Special handling for process_order - clear cart immediately since order is complete
             if (currentFunctionCall.current?.name === 'process_order') {
               console.log('🔄 Order processed, clearing cart state immediately');
               // Clear local cart state immediately for better UX
               setCartItems([]);
               setCartTotal(0);
+              
+              // Broadcast order completion
+              window.dispatchEvent(new CustomEvent('order-completed', { detail: result }));
+              
               // Also update from server to ensure sync, with multiple attempts if needed
               setTimeout(() => updateCartDisplay(), 100);
               setTimeout(() => updateCartDisplay(), 500);
