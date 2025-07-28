@@ -16,7 +16,7 @@ export async function GET() {
       // Use default config if MCP fails
       mcpConfig = {
         tts_provider: 'openai',
-        tts_voice: 'alloy',
+        tts_voice: 'shimmer',
         rate: 1.0,
         temperature: 0.6
       };

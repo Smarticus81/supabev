@@ -1,48 +1,45 @@
 # Beverage POS System
 
-A sophisticated point-of-sale system for luxury beverage venues with AI-powered voice assistance and intelligent inventory management.
+A modern, voice-controlled beverage point-of-sale system with real-time updates and premium WebSocket communication.
 
-## Features
+## 🚀 Quick Start
 
-- 🎙️ **Voice-Controlled Interface**: Professional AI assistant "Bev" for hands-free operation
-- 📊 **Real-time Inventory Management**: Track stock levels with intelligent alerts
-- 🛒 **Smart Cart System**: Multi-client cart management with payment processing
-- 🧠 **Learning System**: Collects interaction data for continuous improvement
-- 📈 **Analytics Dashboard**: Sales insights and inventory analytics
-- 💳 **Payment Processing**: Multiple payment methods with transaction tracking
+### Option 1: One-Button Startup (Recommended)
+```bash
+npm run start-all
+```
 
-## Tech Stack
+### Option 2: Windows Batch File
+Double-click `start-servers.bat`
 
-- **Frontend**: Next.js 15, React 19, TypeScript, Tailwind CSS
-- **Backend**: Node.js, Express, Drizzle ORM
-- **Database**: Supabase, PostgreSQL
-- **Voice AI**: OpenAI Realtime API, WebRTC
-- **Audio Processing**: Web Audio API, Voice Activity Detection
+### Option 3: PowerShell Script
+Right-click `start-servers.ps1` → "Run with PowerShell"
 
-## Learning System
+### Option 4: Manual Startup
+```bash
+# Terminal 1: Start WebSocket Server
+npm run start-ws
 
-The system includes a comprehensive learning apparatus for:
-- **Supervised Fine-Tuning (SFT)**: Voice interaction patterns and intent recognition
-- **Reinforcement Learning (RL)**: Decision optimization based on user feedback
-- **Continuous Improvement**: Real-time adaptation to venue-specific needs
+# Terminal 2: Start Next.js App
+npm run dev
+```
 
-## Deployment
+## 🌐 Access Points
+- **WebSocket Server**: http://localhost:8081
+- **Next.js App**: http://localhost:3000
 
-This application is configured for Railway deployment with automatic scaling and PostgreSQL integration.
+## 🎤 Voice Control
+- Wake word: "Hey Bev" (or variations like "Hey Beth", "Bev", etc.)
+- Voice commands for adding drinks, managing cart, and more
 
-## Environment Variables
+## 🛠️ Development
+- Built with Next.js 14
+- Real-time WebSocket communication
+- OpenAI WebRTC Voice API integration
+- Tailwind CSS for styling
 
-Required environment variables:
-- `DATABASE_URL`: PostgreSQL connection string
-- `OPENAI_API_KEY`: OpenAI API key for voice processing
-- `NODE_ENV`: Environment (production/development)
-
-## Getting Started
-
-1. Install dependencies: `npm install`
-2. Set up environment variables
-3. Run database migrations: `npm run db:migrate`
-4. Seed the database: `npm run db:seed`
-5. Start the application: `npm start`
-
-Built for luxury hospitality venues requiring sophisticated beverage management with voice-first interaction design.
+## 📁 Project Structure
+- `/app` - Next.js app router pages and API routes
+- `/components` - React components including voice control
+- `/scripts` - Server scripts (WebSocket, MCP, etc.)
+- `/data` - JSON data files for drinks and configurations

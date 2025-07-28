@@ -2,11 +2,8 @@
 
 import { useState, useEffect, useRef } from 'react';
 
-// Helper function to normalize drink names for better matching
 function normalizeDrinkName(name: string): string {
   if (!name || name === 'Unknown Drink') return name;
-  
-  // Common drink name normalizations
   const normalizations: { [key: string]: string } = {
     'hendricks': 'Hendricks Gin',
     'hendrick': 'Hendricks Gin', 
@@ -31,28 +28,20 @@ function normalizeDrinkName(name: string): string {
     'captain morgan': 'Captain Morgan',
     'malibu': 'Malibu'
   };
-  
   const lowerName = name.toLowerCase().trim();
-  
-  // Check for exact matches first
   if (normalizations[lowerName]) {
     return normalizations[lowerName];
   }
-  
-  // Check for partial matches
   for (const [key, value] of Object.entries(normalizations)) {
     if (lowerName.includes(key) || key.includes(lowerName)) {
       return value;
     }
   }
-  
-  // Return original name with proper capitalization
   return name.split(' ')
     .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
     .join(' ');
 }
 
-// OpenAI Realtime WebRTC Voice Agent Component
 export function VoiceControlButton({ 
   onNavigateToTab, 
   currentTab 
@@ -70,14 +59,8 @@ export function VoiceControlButton({
   const [aiResponse, setAiResponse] = useState('');
   const [apiKeyValid, setApiKeyValid] = useState<boolean | null>(null);
   const [pendingFunctionCalls, setPendingFunctionCalls] = useState<Set<string>>(new Set());
-  
-  // Theme state
-  const [isDarkMode, setIsDarkMode] = useState(false); // Changed to light mode default
-  
-  // Device detection state
+  const [isDarkMode, setIsDarkMode] = useState(false);
   const [deviceType, setDeviceType] = useState<'mobile' | 'tablet' | 'desktop'>('desktop');
-  
-  // Japanese color palette
   const colors = {
     primary: isDarkMode ? 'text-slate-300' : 'text-stone-800',
     secondary: isDarkMode ? 'text-slate-400' : 'text-stone-600', 
@@ -90,23 +73,17 @@ export function VoiceControlButton({
     card: isDarkMode ? 'bg-slate-800/50' : 'bg-white/70',
     glass: isDarkMode ? 'bg-slate-800/30 backdrop-blur-md' : 'bg-white/30 backdrop-blur-md'
   };
-  
-  // Removed local cart state - cart is managed by main page only
-  
-  // Response queuing system to prevent overlap
   const [isProcessingFunction, setIsProcessingFunction] = useState(false);
   const [queuedResponse, setQueuedResponse] = useState<string | null>(null);
-  
-  // Voice configuration state - Optimized for speed and no rate limits
   const [voiceConfig, setVoiceConfig] = useState({
     provider: 'openai',
-    voice: 'alloy',
-    rate: 1.4, // Faster speech speed (1.4x normal)
-    temperature: 0.6, // Minimum required by OpenAI Realtime API
-    vad_threshold: 0.4, // Very sensitive voice detection for excellent wake word response
-    prefix_padding: 100, // Reduced padding for faster response
-    silence_duration: 200, // Shorter silence detection for quicker responses
-    max_tokens: 2500, // Increased token limit
+    voice: 'shimmer',
+    rate: 1.4,
+    temperature: 0.6,
+    vad_threshold: 0.3,
+    prefix_padding: 300,
+    silence_duration: 800,
+    max_tokens: 2500,
     response_style: 'efficient',
     audio_gain: 1.0,
     noise_suppression: true,
@@ -115,18 +92,15 @@ export function VoiceControlButton({
     verbosity: 'balanced'
   });
   const [lastResponseTime, setLastResponseTime] = useState<number>(0);
-  const responseDelayMs = 0; // Eliminated all artificial delays for true real-time performance
+  const responseDelayMs = 0;
   const currentResponseId = useRef<string | null>(null);
   const currentFunctionCall = useRef<{ name: string; call_id: string; arguments?: any; argumentsString?: string } | null>(null);
-
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const dataChannelRef = useRef<RTCDataChannel | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const audioElementRef = useRef<HTMLAudioElement | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const gainNodeRef = useRef<GainNode | null>(null);
-
-  // Audio queue and speculative response management
   const audioQueueRef = useRef<Array<{ 
     text: string; 
     type?: string;
@@ -137,55 +111,66 @@ export function VoiceControlButton({
   }>>([]);
   const speculativeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isProcessingAudioRef = useRef<boolean>(false);
-
-  // Wake word detection state
   const [isWakeWordMode, setIsWakeWordMode] = useState(false);
   const [isWaitingForWakeWord, setIsWaitingForWakeWord] = useState(false);
-  
-  // Browser ASR for wake word detection (no speech output)
   const wakeWordRecognitionRef = useRef<any>(null);
   const isWaitingForWakeWordRef = useRef<boolean>(false);
   const isWakeWordModeRef = useRef<boolean>(false);
-
-  // Session management
+  const isListeningRef = useRef<boolean>(false);
   const [isStartingSession, setIsStartingSession] = useState(false);
+  const wakeWordTimeRef = useRef<number | null>(null);
+  const wakeAckAudioRef = useRef<HTMLAudioElement | null>(null);
 
-  // Auto-return to wake word mode state - REMOVED, now using user-controlled "thanks bev" trigger
-
-  const wakeWordTimeRef = useRef<number | null>(null); // For latency logging
-  const wakeAckAudioRef = useRef<HTMLAudioElement | null>(null); // For wake word sound
-
-  // Initialize WebRTC connection
   useEffect(() => {
-    // Initialize wake acknowledgement audio element
-    wakeAckAudioRef.current = new Audio('/sounds/wake-ack.mp3'); // IMPORTANT: Replace with your sound file path
-    wakeAckAudioRef.current.volume = 0.5; // Adjust volume as needed
+    wakeAckAudioRef.current = new Audio('/sounds/wake-ack.mp3');
+    wakeAckAudioRef.current.volume = 0.5;
     wakeAckAudioRef.current.preload = 'auto'; 
-
     initializeAudioElement(); 
     checkApiKeyStatus();
-    updateCartDisplay(); // Ensure this call remains
-    
-    // Add visibility change listener
     document.addEventListener('visibilitychange', handleVisibilityChange);
     
+    // Listen for cart updates from other components
+    const handleCartUpdate = (event: Event) => {
+      const customEvent = event as CustomEvent;
+      console.log('🔊 Voice control received cart update:', customEvent.detail);
+      // Update any local cart state if needed
+    };
+    
+    const handleOrderUpdate = (event: Event) => {
+      const customEvent = event as CustomEvent;
+      console.log('🔊 Voice control received order update:', customEvent.detail);
+      // Handle order completion from UI
+    };
+    
+    // Add event listeners
+    window.addEventListener('realtime-cart_update', handleCartUpdate);
+    window.addEventListener('realtime-order_update', handleOrderUpdate);
+    
     return () => {
-      cleanup();
+      if (!isListeningRef.current && !isWakeWordModeRef.current) {
+        cleanup();
+      }
       document.removeEventListener('visibilitychange', handleVisibilityChange);
+      // Clean up event listeners
+      window.removeEventListener('realtime-cart_update', handleCartUpdate);
+      window.removeEventListener('realtime-order_update', handleOrderUpdate);
     };
   }, []);
 
+  useEffect(() => {
+    isListeningRef.current = isListening;
+  }, [isListening]);
+
+  useEffect(() => {
+    isWakeWordModeRef.current = isWakeWordMode;
+  }, [isWakeWordMode]);
+
   const handleVisibilityChange = () => {
     if (document.hidden) {
-      console.log('Tab is hidden, pausing voice agent...');
-      // Optional: Add logic to pause or gracefully handle the agent when tab is not visible
     } else {
-      console.log('Tab is visible, voice agent remains user-controlled...');
-      // Voice control is now completely user-initiated - no auto-restart
     }
   };
 
-  // Device detection
   useEffect(() => {
     const detectDevice = () => {
       const width = window.innerWidth;
@@ -197,31 +182,12 @@ export function VoiceControlButton({
         setDeviceType('desktop');
       }
     };
-
     detectDevice();
     window.addEventListener('resize', detectDevice);
     return () => window.removeEventListener('resize', detectDevice);
   }, []);
 
-  // Auto-start disabled - voice control now requires user interaction
-  // useEffect(() => {
-  //   console.log('🚀 Voice control component mounted, auto-starting wake word mode...');
-  //   
-  //   // Wait a moment for component to fully initialize
-  //   const initTimer = setTimeout(() => {
-  //     if (!isListening && !isWakeWordMode) {
-  //       console.log('🎯 Auto-starting wake word detection...');
-  //       startWakeWordDetection();
-  //     }
-  //   }, 1000);
-
-  //   return () => {
-  //     clearTimeout(initTimer);
-  //   };
-  // }, []); // Empty dependency array means this runs once on mount
-
   const initializeAudioElement = () => {
-    // Create audio element for playback
     audioElementRef.current = document.createElement('audio');
     audioElementRef.current.autoplay = true;
     audioElementRef.current.style.display = 'none';
@@ -229,20 +195,9 @@ export function VoiceControlButton({
     audioElementRef.current.muted = false;
     audioElementRef.current.volume = 1.0;
     audioElementRef.current.preload = 'auto';
-    
-    // Add event listeners for debugging
-    audioElementRef.current.addEventListener('canplay', () => {
-      console.log('🔊 Audio can play');
-    });
-    
-    audioElementRef.current.addEventListener('play', () => {
-      console.log('🔊 Audio started playing');
-    });
-    
-    audioElementRef.current.addEventListener('error', (e) => {
-      console.error('🔊 Audio error:', e);
-    });
-    
+    audioElementRef.current.addEventListener('canplay', () => {});
+    audioElementRef.current.addEventListener('play', () => {});
+    audioElementRef.current.addEventListener('error', (e) => {});
     document.body.appendChild(audioElementRef.current);
   };
 
@@ -253,16 +208,14 @@ export function VoiceControlButton({
         const data = await response.json();
         const hasValidKey = data.openaiKey && data.openaiKey !== 'your-openai-api-key-here';
         setApiKeyValid(hasValidKey);
-        
-        // Load voice configuration
         const configData = data.config || data;
         if (configData.tts_provider && configData.tts_provider === 'openai') {
           setVoiceConfig({
             provider: configData.tts_provider,
-            voice: configData.tts_voice || configData.voice || 'alloy',
+            voice: configData.tts_voice || configData.voice || 'shimmer',
             rate: configData.rate || 1.0,
             temperature: configData.temperature || 0.5,
-            vad_threshold: configData.vad_threshold || 0.4, // Higher threshold for better sensitivity
+            vad_threshold: configData.vad_threshold || 0.4,
             prefix_padding: configData.prefix_padding || 200,
             silence_duration: configData.silence_duration || 300,
             max_tokens: configData.max_tokens || 1500,
@@ -274,13 +227,12 @@ export function VoiceControlButton({
             verbosity: configData.verbosity || 'balanced'
           });
         } else if (configData.voice) {
-          // Legacy OpenAI configuration
           setVoiceConfig({
             provider: 'openai',
             voice: configData.voice,
             rate: configData.rate || 1.0,
             temperature: configData.temperature || 0.5,
-            vad_threshold: configData.vad_threshold || 0.4, // Higher threshold for better sensitivity
+            vad_threshold: configData.vad_threshold || 0.4,
             prefix_padding: configData.prefix_padding || 200,
             silence_duration: configData.silence_duration || 300,
             max_tokens: configData.max_tokens || 1500,
@@ -292,7 +244,6 @@ export function VoiceControlButton({
             verbosity: configData.verbosity || 'balanced'
           });
         }
-        
         if (!hasValidKey) {
           setError('OpenAI API key not configured. Please update your .env file with a valid API key.');
         } else if (configData.tts_provider && configData.tts_provider !== 'openai') {
@@ -300,7 +251,6 @@ export function VoiceControlButton({
         }
       }
     } catch (error) {
-      console.error('Failed to check API key status:', error);
       setApiKeyValid(false);
       setError('Failed to check API configuration.');
     }
@@ -308,48 +258,31 @@ export function VoiceControlButton({
 
   const getApiKey = async () => {
     try {
-      console.log('🔑 Getting OpenAI API key...');
-      console.log('🌐 Fetching /api/config...');
       const response = await fetch('/api/config');
-      
-      console.log('📥 Config API response status:', response.status);
       if (!response.ok) {
         throw new Error(`Failed to get config: ${response.status}`);
       }
-
-      console.log('📄 Parsing config data...');
       const data = await response.json();
-      console.log('🔍 Config data received:', { hasOpenaiKey: !!data.openaiKey, keyPreview: data.openaiKey?.slice(0, 10) + '...' });
-      
       if (!data.openaiKey || data.openaiKey === 'your-openai-api-key-here') {
         throw new Error('OpenAI API key not configured. Please update your .env file.');
       }
-      
-      console.log('✅ API key obtained successfully');
       return data.openaiKey;
     } catch (error) {
-      console.error('❌ Failed to get API key:', error);
       throw error;
     }
   };
 
   const getMicrophoneAccess = async () => {
     try {
-      console.log('🎤 Requesting microphone access...');
-      
-      // Base audio constraints optimized for ultra-low latency
       const baseConstraints: MediaTrackConstraints = {
-          sampleRate: 24000,        // Optimal for OpenAI Realtime API
+          sampleRate: 24000,
           channelCount: 1,
           echoCancellation: voiceConfig.echo_cancellation,
           noiseSuppression: voiceConfig.noise_suppression,
           autoGainControl: true
       };
-      
-      // Enhanced constraints with browser-specific low-latency properties
       const enhancedConstraints = {
         ...baseConstraints,
-        // Chrome-specific ultra-fast audio processing
         ...(navigator.userAgent.includes('Chrome') && {
           googEchoCancellation: voiceConfig.echo_cancellation,
           googAutoGainControl: true,
@@ -357,47 +290,33 @@ export function VoiceControlButton({
           googHighpassFilter: true,
           googTypingNoiseDetection: true,
           googAudioMirroring: false,
-          // CHROME LOW-LATENCY OPTIMIZATIONS
           googDAEchoCancellation: voiceConfig.echo_cancellation,
           googNoiseReduction: voiceConfig.noise_suppression,
           googBeamforming: true,
           googArrayGeometry: true
         })
       } as MediaTrackConstraints;
-      
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: enhancedConstraints
       });
-      
       mediaStreamRef.current = stream;
-      console.log('✅ Microphone access granted with enhanced audio processing');
       return stream;
     } catch (error) {
-      console.error('❌ Microphone access denied:', error);
       throw new Error('Microphone access denied. Please allow microphone permissions.');
     }
   };
 
   const setupWebRTCConnection = async (apiKey: string, stream: MediaStream) => {
     try {
-      console.log('🔗 Setting up WebRTC connection...');
-      
-      // Create peer connection with optimized low-latency configuration
       const pc = new RTCPeerConnection({
         iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
-        // ULTRA-LOW LATENCY OPTIMIZATIONS
-        iceCandidatePoolSize: 0,  // Disable ICE candidate pooling for faster connection
-        bundlePolicy: 'max-bundle',  // Bundle all media for efficiency
-        rtcpMuxPolicy: 'require'     // Multiplex RTCP for reduced overhead
+        iceCandidatePoolSize: 0,
+        bundlePolicy: 'max-bundle',
+        rtcpMuxPolicy: 'require'
       });
       peerConnectionRef.current = pc;
-
-      // Handle connection state changes
       pc.onconnectionstatechange = () => {
         const state = pc.connectionState;
-        console.log('🔄 Connection state:', state);
-        
-        // Map RTCPeerConnectionState to our connection status
         switch (state) {
           case 'connecting':
             setConnectionStatus('connecting');
@@ -413,116 +332,57 @@ export function VoiceControlButton({
             setIsConnected(false);
             break;
           default:
-            // Handle other states like 'new'
             break;
         }
       };
-
-            // Handle incoming audio track
       pc.ontrack = (event) => {
-        console.log('🔊 Received audio track from OpenAI', event);
-        console.log('🔊 Track kind:', event.track.kind);
-        console.log('🔊 Track state:', event.track.readyState);
-        console.log('🔊 Streams count:', event.streams.length);
-        
         if (audioElementRef.current && event.streams[0]) {
           const stream = event.streams[0];
-          console.log('🔊 Setting audio stream source, tracks:', stream.getTracks().length);
-          console.log('🔊 Audio tracks:', stream.getAudioTracks().map(t => ({ id: t.id, enabled: t.enabled, muted: t.muted })));
-          
           audioElementRef.current.srcObject = stream;
-          
-          // Log audio element state
-          console.log('🔊 Audio element state:', {
-            paused: audioElementRef.current.paused,
-            muted: audioElementRef.current.muted,
-            volume: audioElementRef.current.volume,
-            readyState: audioElementRef.current.readyState
-          });
-          
-          // Setup Web Audio API as backup for better audio handling
           try {
             if (!audioContextRef.current) {
               const AudioCtx = (window as any).AudioContext || (window as any).webkitAudioContext;
               audioContextRef.current = new AudioCtx();
               gainNodeRef.current = audioContextRef.current.createGain();
               gainNodeRef.current.connect(audioContextRef.current.destination);
-              console.log('🔊 Web Audio API context created');
             }
-            
             const context = audioContextRef.current;
             const gainNode = gainNodeRef.current;
-            
             if (context && gainNode) {
-              // Connect stream to Web Audio API as backup
               const source = context.createMediaStreamSource(stream);
               source.connect(gainNode);
-              console.log('🔊 Stream connected to Web Audio API');
-              
               if (context.state === 'suspended') {
-                context.resume().then(() => {
-                  console.log('🔊 Web Audio context resumed');
-                });
+                context.resume().then(() => {});
               }
             }
-          } catch (webAudioError) {
-            console.warn('🔊 Web Audio API setup failed:', webAudioError);
-          }
-          
-          // Ensure audio plays by manually triggering play if needed
+          } catch (webAudioError) {}
           audioElementRef.current.play().then(() => {
-            console.log('🔊 Audio playback started successfully');
             setIsPlaying(true);
           }).catch((error) => {
-            console.error('🔊 Audio playback failed:', error);
-            console.error('🔊 Error name:', error.name);
-            console.error('🔊 Error message:', error.message);
-            
-            // Try to enable audio context and retry
             if (typeof AudioContext !== 'undefined' || typeof (window as any).webkitAudioContext !== 'undefined') {
               const AudioCtx = AudioContext || (window as any).webkitAudioContext;
               const audioContext = new AudioCtx();
-              console.log('🔊 Audio context state:', audioContext.state);
               if (audioContext.state === 'suspended') {
                 audioContext.resume().then(() => {
-                  console.log('🔊 Audio context resumed, retrying play');
-                  audioElementRef.current?.play().catch(console.error);
+                  audioElementRef.current?.play().catch(() => {});
                 });
               }
             }
           });
-        } else {
-          console.error('🔊 No audio element or stream available');
-          if (!audioElementRef.current) console.error('🔊 audioElementRef.current is null');
-          if (!event.streams[0]) console.error('🔊 event.streams[0] is null');
         }
       };
-
-      // Add local audio track
       const audioTrack = stream.getAudioTracks()[0];
       pc.addTrack(audioTrack, stream);
-      console.log('🎤 Added local audio track');
-
-      // Create data channel for events
       const dc = pc.createDataChannel('oai-events');
       dataChannelRef.current = dc;
-
       dc.onopen = () => {
-        console.log('📡 Data channel opened');
         sendSessionUpdate();
         sendStartMessage();
       };
-
       dc.onmessage = (event) => {
         handleDataChannelMessage(JSON.parse(event.data));
       };
-
-      // Create offer and set local description (implicit style)
       await pc.setLocalDescription();
-      console.log('📝 Created WebRTC offer');
-
-      // Send offer to OpenAI Realtime API directly
-      console.log('📤 Sending WebRTC offer to OpenAI...');
       const response = await fetch(`https://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-12-17`, {
         method: 'POST',
         headers: {
@@ -531,12 +391,9 @@ export function VoiceControlButton({
         },
         body: pc.localDescription?.sdp
       });
-
-      console.log('📥 OpenAI response status:', response.status);
       if (!response.ok) {
         const errorText = await response.text();
         let errorMessage = `WebRTC setup failed: ${response.status}`;
-        
         try {
           const errorData = JSON.parse(errorText);
           if (errorData.error?.message) {
@@ -545,56 +402,48 @@ export function VoiceControlButton({
         } catch (e) {
           errorMessage += ` - ${errorText}`;
         }
-        
         if (response.status === 401) {
           setApiKeyValid(false);
           setError('Invalid OpenAI API key. Please check your API key and ensure it has Realtime API access.');
         }
-        
         throw new Error(errorMessage);
       }
-
       const answerSdp = await response.text();
-      console.log('📝 Setting remote description...');
       await pc.setRemoteDescription({
         type: 'answer',
         sdp: answerSdp
       });
-
-      console.log('✅ WebRTC connection established, waiting for connection state...');
       setError(null);
       setApiKeyValid(true);
-
-      // Wait for connection to be fully established
-      console.log('⏳ Waiting for WebRTC connection to be ready...');
       await new Promise((resolve, reject) => {
         const timeout = setTimeout(() => {
-          console.error(`❌ Connection timeout. Final state: ${pc.connectionState}`);
           reject(new Error(`Connection timeout. State: ${pc.connectionState}`));
         }, 10000);
-
         const checkConnection = () => {
-          console.log('🔍 Checking connection state:', pc.connectionState);
           if (pc.connectionState === 'connected') {
-            console.log('🎉 WebRTC connection fully established!');
             clearTimeout(timeout);
             resolve(undefined);
           }
         };
-
         pc.addEventListener('connectionstatechange', checkConnection);
-        checkConnection(); // Check immediately in case already connected
+        checkConnection();
+        pc.addEventListener('connectionstatechange', () => {
+          if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed') {
+            if (isListening) {
+              setError('Connection temporarily lost, but session maintained');
+            }
+          } else if (pc.connectionState === 'connected') {
+            setError(null);
+          }
+        });
       });
-
     } catch (error) {
-      console.error('❌ WebRTC setup failed:', error);
       throw error;
     }
   };
 
   const sendSessionUpdate = () => {
     if (!dataChannelRef.current || dataChannelRef.current.readyState !== 'open') return;
-
     const sessionMessage = {
       type: 'session.update',
       session: {
@@ -683,7 +532,7 @@ For ALL ordering operations (cart, drinks, orders), speak as if actions are ALRE
 
 🎯 ORDERING FLOW (Use PAST TENSE):
 User: "Add a champagne"
-Bev: "Perfect! I've added champagne to your cart for $45. What else can I get for your celebration?"
+Bev: "Perfect! I've added champagne to your cart for $45."
 
 User: "Process my order"  
 Bev: "Excellent! Your order has been processed and totals $127.50. Your beverages are ready!"
@@ -768,10 +617,9 @@ Remember: Create the perfect illusion of instant response while maintaining natu
           silence_duration_ms: voiceConfig.silence_duration
         },
         max_response_output_tokens: voiceConfig.max_tokens,
-        // Optimizations for speed and unlimited usage
         temperature: voiceConfig.temperature,
-        modalities: ['text', 'audio'], // Enable both text and audio
-        tool_choice: 'auto', // Allow automatic tool selection
+        modalities: ['text', 'audio'],
+        tool_choice: 'auto',
         tools: [
           {
             type: "function",
@@ -925,7 +773,6 @@ Remember: Create the perfect illusion of instant response while maintaining natu
               required: ["updates"]
             }
           },
-          // 📊 BUSINESS INTELLIGENCE & ANALYTICS TOOLS
           {
             type: "function",
             name: "get_order_analytics",
@@ -1015,7 +862,6 @@ Remember: Create the perfect illusion of instant response while maintaining natu
               }
             }
           },
-          // 👥 STAFF & OPERATIONS MANAGEMENT TOOLS
           {
             type: "function",
             name: "get_current_staff",
@@ -1064,7 +910,6 @@ Remember: Create the perfect illusion of instant response while maintaining natu
               required: ["tab_id"]
             }
           },
-          // 🎉 EVENT & PACKAGE MANAGEMENT TOOLS
           {
             type: "function",
             name: "list_event_packages",
@@ -1248,7 +1093,6 @@ Remember: Create the perfect illusion of instant response while maintaining natu
               required: ["booking_id", "status"]
             }
           },
-          // 💰 FINANCIAL & PAYMENT TOOLS
           {
             type: "function",
             name: "get_payment_methods",
@@ -1288,7 +1132,6 @@ Remember: Create the perfect illusion of instant response while maintaining natu
               }
             }
           },
-          // 🔍 ADVANCED DRINK & INVENTORY TOOLS  
           {
             type: "function",
             name: "get_low_inventory_bottles",
@@ -1341,7 +1184,6 @@ Remember: Create the perfect illusion of instant response while maintaining natu
               }
             }
           },
-          // 📋 ORDER MANAGEMENT TOOLS
           {
             type: "function",
             name: "get_order_details",
@@ -1410,7 +1252,6 @@ Remember: Create the perfect illusion of instant response while maintaining natu
               required: ["order_id"]
             }
           },
-          // 🍸 DRINK MENU MANAGEMENT TOOLS - NEW!
           {
             type: "function",
             name: "create_drink",
@@ -1521,14 +1362,11 @@ Remember: Create the perfect illusion of instant response while maintaining natu
         ]
       }
     };
-
     dataChannelRef.current.send(JSON.stringify(sessionMessage));
-    console.log('📤 Sent enhanced session update with full venue capabilities');
   };
 
   const sendStartMessage = () => {
     if (!dataChannelRef.current || dataChannelRef.current.readyState !== 'open') return;
-
     const startMessage = {
       type: 'response.create',
       response: {
@@ -1537,19 +1375,15 @@ Remember: Create the perfect illusion of instant response while maintaining natu
         max_output_tokens: 1000
       }
     };
-
     dataChannelRef.current.send(JSON.stringify(startMessage));
     setLastResponseTime(Date.now());
-    console.log('📤 Sent start message');
   };
 
   const sendMessage = (message: any) => {
     if (dataChannelRef.current?.readyState === 'open') {
       dataChannelRef.current.send(JSON.stringify(message));
-      console.log('📤 Sent message:', message.type);
       return true;
     }
-    console.warn('⚠️ Data channel not open, cannot send message');
     return false;
   };
 
@@ -1561,54 +1395,29 @@ Remember: Create the perfect illusion of instant response while maintaining natu
         max_output_tokens: 1000
       }
     };
-    
     if (sendMessage(responseMessage)) {
       setLastResponseTime(Date.now());
-      console.log('⚡ Triggered instant response generation');
     }
   };
 
   const handleDataChannelMessage = async (message: any) => {
-    console.log('📨 Received message:', message.type);
-
     switch (message.type) {
       case 'session.created':
-        console.log('✅ Session created');
         break;
-
       case 'session.updated':
-        console.log('✅ Session updated');
         break;
-
-      case 'response.created':
-        currentResponseId.current = message.response?.id || null;
-        console.log('🆕 Response created:', currentResponseId.current);
-        break;
-
       case 'response.done':
-        console.log('✅ Response completed');
         currentResponseId.current = null;
         setPendingFunctionCalls(new Set());
         setLastResponseTime(Date.now());
-        setIsProcessingFunction(false); // Reset processing state when response is done
-        
-        // Auto-return to wake word mode after a period of inactivity (unless already terminated)
-        setTimeout(() => {
-          // Only return to wake word mode if we're still in active conversation mode
-          // and haven't already been terminated by a terminating phrase
-          if (isListening && !isWakeWordMode && !isProcessing) {
-            console.log('🔄 Auto-returning to wake word mode after conversation inactivity');
-            stopListening(true); // Pass true to return to wake word mode
-          }
-        }, 10000); // 10 seconds of inactivity before returning to wake word mode
+        setIsProcessingFunction(false);
+        setIsListening(true);
+        setIsConnected(true);
+        setConnectionStatus('connected');
         break;
-
       case 'input_audio_buffer.speech_started':
-        console.log('🗣️ Speech detected');
         setIsProcessing(true);
         setTranscript('');
-        
-        // Clear any ongoing speculative audio when user starts speaking
         if (speculativeTimeoutRef.current) {
           clearTimeout(speculativeTimeoutRef.current);
           speculativeTimeoutRef.current = null;
@@ -1618,118 +1427,66 @@ Remember: Create the perfect illusion of instant response while maintaining natu
           window.speechSynthesis.cancel();
         }
         break;
-
       case 'input_audio_buffer.speech_stopped':
-        console.log('🤐 Speech ended');
         break;
-
       case 'conversation.item.input_audio_transcription.completed':
-        if (message.transcript) {
-          setTranscript(message.transcript);
-          console.log('👤 User said:', message.transcript);
-          
-          // 🎭 IMMEDIATE SPECULATIVE RESPONSE FOR CART OPERATIONS - DISABLED
-          // Temporarily disabled until voice matching is configured
-          /*
-          const transcript = message.transcript.toLowerCase();
-          // More specific detection - only trigger for actual cart addition requests
-          const isAddingToCart = (
-            (transcript.includes('add') && (transcript.includes('to') || transcript.includes('cart'))) ||
-            (transcript.includes('get') && (transcript.includes('me') || transcript.includes('a '))) ||
-            (transcript.includes('order') && (transcript.includes('me') || transcript.includes('a ') || transcript.includes('i want'))) ||
-            (transcript.includes('buy') && transcript.includes('a ')) ||
-            (transcript.includes('purchase') && transcript.includes('a ')) ||
-            (transcript.includes('i want') || transcript.includes('i need') || transcript.includes('can i get') || transcript.includes('could i get'))
-          );
-          
-          if (isAddingToCart) {
-            console.log('🎭 Cart operation detected in transcript, playing immediate speculative response');
-            playSpeculativeSentence('add_drink_to_cart');
+          if (message.transcript) {
+            setTranscript(message.transcript);
+            const lowerTranscript = message.transcript.toLowerCase();
+            const cleanTranscript = lowerTranscript.replace(/[.,!?]/g, '').replace(/\s+/g, ' ').trim();
+            const terminatingPhrases = [
+              'thanks bev',
+              'thank you bev',
+              'thanks beth',
+              'thank you beth',
+              'stop listening',
+              'that\'s all',
+              'that is all',
+              'we\'re done',
+              'we are done',
+              'that completes the order',
+              'that\'s everything',
+              'that is everything',
+              'we\'re good',
+              'we are good',
+              'that\'s it',
+              'that is it',
+              'i\'m done',
+              'i am done',
+              'goodbye bev',
+              'bye bev',
+              'end conversation'
+            ];
+            const shouldReturnToWakeWord = terminatingPhrases.some(phrase => 
+              cleanTranscript === phrase
+            );
+            if (shouldReturnToWakeWord) {
+              setTimeout(async () => {
+                try {
+                  await stopListening(true); 
+                } catch (error) {
+                  setTimeout(() => {
+                    startWakeWordDetection();
+                  }, 1000);
+                }
+              }, 1000);
+            }
           }
-          */
-          
-          // Check for terminating phrases to return to wake word mode
-          const lowerTranscript = message.transcript.toLowerCase(); // Use the transcript from message
-          // Remove punctuation and normalize spacing
-          const cleanTranscript = lowerTranscript.replace(/[.,!?]/g, '').replace(/\s+/g, ' ').trim();
-          
-          const terminatingPhrases = [
-            'thanks bev',
-            'thank you bev', 
-            'thanks beth',
-            'thank you beth',
-            'stop listening',
-            'that\'s all',
-            'that is all',
-            'we\'re done',
-            'we are done',
-            'the order is complete',
-            'order is complete',
-            'that completes the order',
-            'that\'s everything',
-            'that is everything',
-            'we\'re good',
-            'we are good',
-            'that\'s it',
-            'that is it',
-            'i\'m done',
-            'i am done',
-            'goodbye bev',
-            'bye bev',
-            'end conversation',
-            'thanks',
-            'thank you',
-            'goodbye',
-            'bye',
-            'see you later',
-            'catch you later',
-            'talk to you later'
-          ];
-          
-          const shouldReturnToWakeWord = terminatingPhrases.some(phrase => 
-            cleanTranscript === phrase || cleanTranscript.includes(phrase)
-          );
-          
-          if (shouldReturnToWakeWord) {
-            console.log('🔄 Terminating phrase detected, returning to wake word mode');
-            
-            // Immediate return to wake word mode - don't wait for AI to finish
-            setTimeout(async () => {
-              try {
-                await stopListening(true); // Pass true to return to wake word mode
-              } catch (error) {
-                console.error('❌ Error returning to wake word mode:', error);
-                // Fallback: try to start wake word detection directly
-                setTimeout(() => {
-                  startWakeWordDetection();
-                }, 1000);
-              }
-            }, 1000); // Short delay to allow current response to process
-          }
-        }
-        break;
-
+          break;
       case 'conversation.item.input_audio_transcription.failed':
-        console.error('❌ OpenAI Whisper transcription failed:', message.error);
         setError('Voice recognition failed. Please try speaking again.');
         setIsProcessing(false);
         break;
-
       case 'response.audio_transcript.delta':
         if (message.delta) {
           setAiResponse(prev => prev + message.delta);
         }
         break;
-
       case 'response.audio_transcript.done':
         const transcript = message.transcript || '';
-        console.log(`🤖 AI said: ${transcript}`);
         setAiResponse(transcript);
         break;
-
       case 'response.function_call_arguments.delta':
-        console.log('🔧 Function call arguments delta:', message);
-        // Store function call details
         if (!currentFunctionCall.current) {
           currentFunctionCall.current = {
             name: message.name || message.function?.name || '',
@@ -1737,63 +1494,41 @@ Remember: Create the perfect illusion of instant response while maintaining natu
             arguments: {},
             argumentsString: ''
           };
-          console.log('🔧 Started new function call:', currentFunctionCall.current.name);
-          
-          // 🎭 TRIGGER SPECULATIVE SENTENCE IMMEDIATELY
           if (currentFunctionCall.current.name) {
             handleEnhancedFunctionCall(currentFunctionCall.current.name, currentFunctionCall.current.call_id);
           }
         }
-        // Update function name if not set
         if (!currentFunctionCall.current.name && (message.name || message.function?.name)) {
           currentFunctionCall.current.name = message.name || message.function?.name || '';
-          console.log('🔧 Updated function name:', currentFunctionCall.current.name);
-          
-          // 🎭 TRIGGER SPECULATIVE SENTENCE IF WE JUST GOT THE NAME
           if (currentFunctionCall.current.name) {
             handleEnhancedFunctionCall(currentFunctionCall.current.name, currentFunctionCall.current.call_id);
           }
         }
-        // Accumulate delta strings instead of trying to parse incomplete JSON
         if (message.delta) {
           if (!currentFunctionCall.current.argumentsString) {
             currentFunctionCall.current.argumentsString = '';
           }
           currentFunctionCall.current.argumentsString += message.delta;
-          console.log('🔧 Accumulated arguments string:', currentFunctionCall.current.argumentsString);
         }
         break;
-
       case 'response.function_call_arguments.done':
-        console.log('🔧 Function call arguments completed:', message.arguments);
-        
-        // Parse the complete arguments string
         let parsedArguments = {};
         if (currentFunctionCall.current?.argumentsString) {
           try {
             parsedArguments = JSON.parse(currentFunctionCall.current.argumentsString);
-            console.log('🔧 Parsed complete arguments:', parsedArguments);
           } catch (error) {
-            console.error('❌ Failed to parse function arguments:', error);
             parsedArguments = message.arguments || {};
           }
         } else {
           parsedArguments = message.arguments || {};
         }
-        
-        // Clear any speculative timeouts since we're about to get real results
         if (speculativeTimeoutRef.current) {
           clearTimeout(speculativeTimeoutRef.current);
           speculativeTimeoutRef.current = null;
         }
-        
         if (currentFunctionCall.current) {
-          console.log('🔧 Executing function call:', currentFunctionCall.current.name);
-          
-          // 🚀 ULTRA-LOW LATENCY: Use direct cart API for cart operations
           const isCartOperation = ['add_drink_to_cart', 'remove_drink_from_cart', 'clear_cart', 'process_order', 'cart_view'].includes(currentFunctionCall.current.name);
           const apiEndpoint = isCartOperation ? '/api/voice-cart-direct' : '/api/voice-advanced';
-          
           const toolMap: { [key: string]: string } = {
             add_drink_to_cart: 'cart_add',
             remove_drink_from_cart: 'cart_remove',
@@ -1802,9 +1537,6 @@ Remember: Create the perfect illusion of instant response while maintaining natu
             cart_view: 'cart_view',
           };
           const backendTool = toolMap[currentFunctionCall.current.name] || currentFunctionCall.current.name;
-          
-          console.log(`🚀 [${isCartOperation ? 'DIRECT' : 'MCP'}] Calling ${apiEndpoint} for ${backendTool}`);
-          
           fetch(apiEndpoint, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -1812,57 +1544,33 @@ Remember: Create the perfect illusion of instant response while maintaining natu
               tool: backendTool,
               parameters: {
                 ...parsedArguments,
-                clientId: 'default' // 🎯 FIXED: Use consistent 'default' instead of undefined
+                clientId: 'default'
               }
             })
           })
           .then(response => response.json())
           .then(result => {
-            console.log('✅ Function call result:', result);
-            
-            // Reset processing and speculative states
             setIsProcessingFunction(false);
-            
-              // 🚀 IMMEDIATE UI UPDATES - No waiting for server broadcasts
-              if (currentFunctionCall.current?.name === 'add_drink_to_cart' && result.success) {
-                // Immediately update cart UI with optimistic data
-                const drinkName = (parsedArguments as any).drink_name;
-                const quantity = (parsedArguments as any).quantity || 1;
-                console.log(`🛒 Optimistically adding ${quantity}x ${drinkName} to cart UI`);
-                
-                // Trigger immediate cart refresh and broadcast
-                setTimeout(() => {
-                  updateCartDisplay();
-                }, 50); // Small delay to ensure server state is updated
-                
-                // Also broadcast to other components using the correct event names
-                window.dispatchEvent(new CustomEvent('realtime-cart_update', { 
-                  detail: { action: 'add', drink: drinkName, quantity } 
-                }));
-              }            // Special handling for process_order - clear cart immediately since order is complete
+            if (currentFunctionCall.current?.name === 'add_drink_to_cart' && result.success) {
+              const drinkName = (parsedArguments as any).drink_name;
+              const quantity = (parsedArguments as any).quantity || 1;
+              setTimeout(() => {
+                updateCartDisplay();
+              }, 100);
+              window.dispatchEvent(new CustomEvent('realtime-cart_update', { 
+                detail: { action: 'add', drink: drinkName, quantity } 
+              }));
+            }
             if (currentFunctionCall.current?.name === 'process_order') {
-              console.log('🔄 Order processed, clearing cart state immediately');
-              // Clear local cart state immediately for better UX
-              // Cart cleared - event will be broadcast to main page
-              
-              // Broadcast order completion using the correct event name
               window.dispatchEvent(new CustomEvent('realtime-order_update', { 
                 detail: { type: 'order_completed', ...result } 
               }));
-              
-              // Also update from server to ensure sync, with multiple attempts if needed
-              setTimeout(() => updateCartDisplay(), 100);
-              setTimeout(() => updateCartDisplay(), 500);
-              setTimeout(() => updateCartDisplay(), 1000);
+              setTimeout(() => updateCartDisplay(), 200);
             } else if (["add_drink_to_cart", "remove_drink_from_cart", "cart_view", "clear_cart"].includes(currentFunctionCall.current?.name || '')) {
-              console.log('🔄 Updating cart display after function:', currentFunctionCall.current?.name);
-              // Always update cart display and broadcast for cart operations
               setTimeout(() => {
                 updateCartDisplay();
-              }, 50);
+              }, 150);
             }
-            
-            // Send the actual result back to the conversation
             const resultMessage = {
               type: 'conversation.item.create',
               item: {
@@ -1871,114 +1579,67 @@ Remember: Create the perfect illusion of instant response while maintaining natu
                 output: JSON.stringify(result)
               }
             };
-            
             if (sendMessage(resultMessage)) {
-              console.log('📤 Sent function call result to conversation');
-              
-              // 🎯 ENHANCED: Create past-tense confirmation for ordering functions
               const isOrderingFunction = [
                 'add_drink_to_cart', 
                 'remove_drink_from_cart', 
                 'process_order', 
                 'clear_cart'
               ].includes(currentFunctionCall.current?.name || '');
-              
-              // Trigger immediate response after sending function result
               if (dataChannelRef.current?.readyState === 'open') {
                 const responseMessage = {
                   type: 'response.create',
                   response: {
                     modalities: ['text', 'audio'],
-                    max_output_tokens: 1000, // Unified token limit for all responses
+                    max_output_tokens: 1000,
                     instructions: isOrderingFunction ? 
-                      "Respond in past tense as if the action has already been completed. Be conversational and engaging while staying efficient." : 
-                      "Provide helpful, detailed information based on the function result. Be conversational and thorough."
+                      "Respond in past tense as if the action has already been completed. Be conversational and engaging while staying efficient. After confirming the action, ask if there's anything else you can help with to keep the conversation active." : 
+                      "Provide helpful, detailed information based on the function result. Be conversational and thorough. Ask if there's anything else you can help with to keep the conversation active."
                   }
                 };
-                
                 if (sendMessage(responseMessage)) {
-                  console.log('🎯 Triggered response after function call with enhanced instructions');
                 }
               }
             }
-            
-            // Clear the current function call
+            const completedFunctionName = currentFunctionCall.current?.name;
             currentFunctionCall.current = null;
           })
           .catch(error => {
-            console.error('❌ Function call error:', error);
             setIsProcessingFunction(false);
             currentFunctionCall.current = null;
           });
         }
         break;
-
       case 'output_audio_buffer.started':
-        console.log('🔊 OpenAI audio output started - audio should begin playing now');
         setIsPlaying(true);
-        
-        // Log audio element status when OpenAI audio starts
-        if (audioElementRef.current) {
-          console.log('🔊 Audio element when OpenAI starts:', {
-            srcObject: !!audioElementRef.current.srcObject,
-            paused: audioElementRef.current.paused,
-            muted: audioElementRef.current.muted,
-            volume: audioElementRef.current.volume,
-            readyState: audioElementRef.current.readyState,
-            currentTime: audioElementRef.current.currentTime,
-            duration: audioElementRef.current.duration
-          });
-        }
-        
         if (wakeWordTimeRef.current) {
           const firstResponseTime = Date.now();
           const latency = firstResponseTime - wakeWordTimeRef.current;
-          console.log(`⏱️ Wake-to-Response Latency: ${latency}ms (T0: ${wakeWordTimeRef.current}, T1: ${firstResponseTime})`);
-          wakeWordTimeRef.current = null; // Reset for next interaction
+          wakeWordTimeRef.current = null;
         }
-        // Cancel only browser-based speculative speech, not OpenAI audio
         if ('speechSynthesis' in window && audioQueueRef.current.some(item => item.type === 'speculative')) {
           window.speechSynthesis.cancel();
-          console.log('🛑 [Speculative] Cancelled browser TTS due to real AI audio start');
         }
         break;
-
       case 'output_audio_buffer.stopped':
-        console.log('🔊 OpenAI audio output stopped');
         setIsPlaying(false);
         break;
-
       case 'rate_limits.updated':
-        console.log('📊 Rate limits updated:', message.rate_limits);
-        // Log rate limits but don't enforce them - we want unlimited usage
-        if (message.rate_limits && message.rate_limits.length > 0) {
-          message.rate_limits.forEach((limit: any) => {
-            console.log(`🚀 Rate limit for ${limit.name}: ${limit.remaining}/${limit.limit} remaining`);
-          });
-        }
         break;
-
       case 'error':
-        console.error('🚨 OpenAI error:', message.error);
         setError(`OpenAI error: ${message.error.message || 'Unknown error'}`);
         if (message.error.code === 'session_expired') {
           await stopListening();
         }
         break;
-
       case 'response.output_item.added':
-        // Check if this is a function call item
         if (message.item?.type === 'function_call') {
-          console.log('🔧 Function call detected:', message.item);
           currentFunctionCall.current = {
             name: message.item.name || '',
             call_id: message.item.call_id || '',
             arguments: {},
             argumentsString: ''
           };
-          console.log('🔧 Function call started:', message.item.name);
-          
-          // 🎭 IMMEDIATELY TRIGGER SPECULATIVE SENTENCE
           if (message.item.name) {
             handleEnhancedFunctionCall(message.item.name, message.item.call_id || '');
           }
@@ -1988,17 +1649,14 @@ Remember: Create the perfect illusion of instant response while maintaining natu
   };
 
   const handleFunctionCall = async (functionName: string, args: any) => {
-    console.log(`🔧 Executing function: ${functionName} with args:`, args);
     let result;
     try {
       switch (functionName) {
         case 'create_drink':
           result = await createDrink(args);
           break;
-        // ... existing code ...
       }
     } catch (error) {
-      console.error(`❌ Error executing ${functionName}:`, error);
       throw error;
     }
     return result;
@@ -2006,15 +1664,11 @@ Remember: Create the perfect illusion of instant response while maintaining natu
 
   const startListening = async () => {
     if (isListening) return;
-
     try {
       setIsProcessing(true);
       setError(null);
       setTranscript('');
       setAiResponse('');
-      console.log('🚀 Starting voice session...');
-
-      // Ensure audio context is enabled for audio playback
       if (typeof AudioContext !== 'undefined' || typeof (window as any).webkitAudioContext !== 'undefined') {
         const AudioCtx = AudioContext || (window as any).webkitAudioContext;
         const audioContext = new AudioCtx();
@@ -2074,16 +1728,30 @@ Remember: Create the perfect illusion of instant response while maintaining natu
       isWakeWordModeRef.current = false;
       setIsWaitingForWakeWord(false);
       isWaitingForWakeWordRef.current = false;
+      cleanup(); // Only cleanup if completely stopping
+    } else {
+        // If returning to wake word mode, perform a partial cleanup of the WebRTC connection
+        // to ensure a fresh start for the next full conversation.
+        if (peerConnectionRef.current) {
+          peerConnectionRef.current.close();
+          peerConnectionRef.current = null;
+        }
+        if (dataChannelRef.current) {
+            dataChannelRef.current.close();
+            dataChannelRef.current = null;
+        }
+        if (mediaStreamRef.current) {
+            mediaStreamRef.current.getTracks().forEach(track => track.stop());
+            mediaStreamRef.current = null;
+        }
     }
-    
-    cleanup();
     
     // Return to wake word mode if requested
     if (shouldReturnToWakeWord) {
       console.log('🔄 Returning to wake word mode...');
       setTimeout(() => {
         startWakeWordDetection();
-      }, 500); // Small delay to ensure cleanup is complete
+      }, 500);
     }
   };
 
@@ -2105,7 +1773,9 @@ Remember: Create the perfect illusion of instant response while maintaining natu
       wakeWordRecognitionRef.current = null;
     }
     
+    // Full WebRTC cleanup
     if (peerConnectionRef.current) {
+      console.log('🔌 Closing WebRTC connection for full cleanup');
       peerConnectionRef.current.close();
       peerConnectionRef.current = null;
     }
@@ -2137,10 +1807,12 @@ Remember: Create the perfect illusion of instant response while maintaining natu
 
   const toggleListening = () => {
     if (isListening || isWakeWordModeRef.current) {
-      // If currently in any voice mode, stop completely (don't return to wake word)
+      // If currently in any voice mode, stop completely
+      console.log('🛑 User requested to stop voice control completely');
       stopListening(false);
     } else {
       // If not in voice mode, start wake word detection
+      console.log('🎤 User requested to start voice control');
       startWakeWordDetection();
     }
   };
@@ -2167,6 +1839,9 @@ Remember: Create the perfect illusion of instant response while maintaining natu
         return;
       }
       
+      // Ensure microphone access before starting recognition
+      await getMicrophoneAccess();
+
       wakeWordRecognitionRef.current = new SpeechRecognition();
       wakeWordRecognitionRef.current.continuous = true;
       wakeWordRecognitionRef.current.interimResults = true;
@@ -2180,9 +1855,6 @@ Remember: Create the perfect illusion of instant response while maintaining natu
       
       wakeWordRecognitionRef.current.onresult = (event: any) => {
         console.log('👂 Wake word recognition got result:', event);
-        console.log('👂 Current isWaitingForWakeWordRef:', isWaitingForWakeWordRef.current);
-        console.log('👂 Current isStartingSession:', isStartingSession);
-        console.log('👂 Current isListening:', isListening);
         
         // Prevent processing if already transitioning or listening to full conversation
         if (isStartingSession || isListening) {
@@ -2223,26 +1895,7 @@ Remember: Create the perfect illusion of instant response while maintaining natu
           'bevy', 'bebby'      // Cute variations
         ];
         
-        // More flexible matching - check if any wake word is contained in transcript
-        const detectedWakeWord = wakeWords.find(word => {
-          // Direct substring match
-          if (transcript.includes(word)) return true;
-          
-          // Fuzzy matching for similar sounding words
-          const words = transcript.split(' ');
-          for (const transcriptWord of words) {
-            // Check for words that start with 'bev', 'bab', 'bet', etc.
-            if (transcriptWord.startsWith('bev') || 
-                transcriptWord.startsWith('bab') || 
-                transcriptWord.startsWith('bet') ||
-                transcriptWord.startsWith('bed') ||
-                transcriptWord.startsWith('beb')) {
-              console.log('🎯 Fuzzy wake word match:', transcriptWord, 'matches pattern for', word);
-              return true;
-            }
-          }
-          return false;
-        });
+        const detectedWakeWord = wakeWords.find(word => transcript.includes(word));
         
         if (detectedWakeWord) {
           console.log('🎯 Wake word detected:', detectedWakeWord, 'from transcript:', transcript);
@@ -2271,22 +1924,23 @@ Remember: Create the perfect illusion of instant response while maintaining natu
           setTimeout(() => {
             startFullConversationMode();
           }, 100); // Minimal delay for immediate response
-        } else {
-          console.log('⚠️ No wake word detected in transcript:', transcript);
-          // Log what words were actually detected for debugging
-          const words = transcript.split(' ');
-          console.log('🔍 Individual words detected:', words);
         }
       };
       
       wakeWordRecognitionRef.current.onerror = (event: any) => {
         console.error('❌ Wake word recognition error:', event.error);
-        if (event.error !== 'no-speech') {
+        if (event.error === 'network') {
+             setError('Network error with wake word detection. Please check your connection.');
+        } else if (event.error !== 'no-speech' && event.error !== 'aborted') {
           setError('Wake word detection error. Please try again.');
-          setIsWaitingForWakeWord(false);
-          isWaitingForWakeWordRef.current = false;
-          setIsWakeWordMode(false);
-          isWakeWordModeRef.current = false;
+        }
+        // Don't disable wake word mode on common errors like 'no-speech'
+        if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+            setError('Microphone access was denied. Please enable it in your browser settings.');
+            setIsWaitingForWakeWord(false);
+            isWaitingForWakeWordRef.current = false;
+            setIsWakeWordMode(false);
+            isWakeWordModeRef.current = false;
         }
       };
       
@@ -2295,23 +1949,23 @@ Remember: Create the perfect illusion of instant response while maintaining natu
         // If we're still in wake word mode and not transitioning, restart immediately
         if (isWakeWordModeRef.current && !isStartingSession && !isListening && isWaitingForWakeWordRef.current) {
           console.log('🔄 Auto-restarting wake word recognition to maintain listening mode');
+          // A short delay helps prevent rapid-fire restarts on some browsers
           setTimeout(() => {
             if (isWakeWordModeRef.current && !isStartingSession && !isListening) {
               try {
-                startWakeWordDetection();
-              } catch (error) {
-                console.warn('⚠️ Could not restart wake word recognition:', error);
-                // Try again after a longer delay
-                setTimeout(() => {
-                  if (isWakeWordModeRef.current && !isStartingSession && !isListening) {
+                // Check if recognition object still exists before starting
+                if (wakeWordRecognitionRef.current) {
+                    wakeWordRecognitionRef.current.start();
+                } else {
+                    // If it was cleared, re-initialize
                     startWakeWordDetection();
-                  }
-                }, 2000);
+                }
+              } catch (error) {
+                console.warn('⚠️ Could not restart wake word recognition, re-initializing:', error);
+                startWakeWordDetection();
               }
             }
-          }, 100); // Very short delay for continuous listening
-        } else {
-          console.log('👂 Not restarting wake word recognition - mode:', isWakeWordModeRef.current, 'starting:', isStartingSession, 'listening:', isListening, 'waiting:', isWaitingForWakeWordRef.current);
+          }, 250);
         }
       };
       
@@ -2331,15 +1985,21 @@ Remember: Create the perfect illusion of instant response while maintaining natu
   const startFullConversationMode = async () => {
     try {
       // Prevent duplicate sessions
-      if (isStartingSession || isListening) {
-        console.log('⚠️ Session already starting or active, ignoring duplicate request');
+      if (isListening) {
+        console.log('⚠️ Session already active, ignoring duplicate request');
         return;
       }
       
       setIsStartingSession(true);
       console.log('🚀 Starting full conversation mode...');
       
-      // Start the full OpenAI Realtime conversation first
+      // Stop any lingering wake word processes
+      if (wakeWordRecognitionRef.current) {
+        wakeWordRecognitionRef.current.stop();
+        wakeWordRecognitionRef.current = null;
+      }
+      
+      // Start the full OpenAI Realtime conversation
       await startListening();
       
       setIsStartingSession(false);
@@ -2348,6 +2008,8 @@ Remember: Create the perfect illusion of instant response while maintaining natu
       console.error('❌ Failed to start full conversation mode:', error);
       setError('Failed to start conversation. Please try again.');
       setIsStartingSession(false);
+      // If it fails, try to go back to wake word mode
+      await stopListening(true);
     }
   };
 
@@ -2533,23 +2195,17 @@ Remember: Create the perfect illusion of instant response while maintaining natu
 
   const processAudioQueue = () => {
     if (audioQueueRef.current.length === 0 || isProcessingAudioRef.current) {
-      console.log(`🎵 Audio queue check: length=${audioQueueRef.current.length}, processing=${isProcessingAudioRef.current}`);
       return;
     }
 
     const nextItem = audioQueueRef.current.shift();
     if (!nextItem) {
-      console.log(`🎵 No audio items in queue`);
       return;
     }
 
     isProcessingAudioRef.current = true;
-    console.log(`🎵 Processing audio queue item:`, nextItem);
 
     if (nextItem.type === 'speculative') {
-      console.log(`🗣️ Starting speech synthesis for: "${nextItem.text}"`);
-      
-      // Play speculative sentence using text-to-speech with optimized settings
       if ('speechSynthesis' in window) {
         // Cancel any existing speech first
         window.speechSynthesis.cancel();
@@ -2561,47 +2217,27 @@ Remember: Create the perfect illusion of instant response while maintaining natu
           utterance.pitch = 1.0;
           utterance.volume = 1.0; // Full volume for clarity
           
-          utterance.onstart = () => {
-            console.log(`🗣️ Speech synthesis STARTED: "${nextItem.text}"`);
-          };
-          
           utterance.onend = () => {
-            console.log(`✅ Speech synthesis COMPLETED: "${nextItem.text}"`);
             isProcessingAudioRef.current = false;
             // Continue processing queue immediately
             setTimeout(() => processAudioQueue(), 10);
           };
 
           utterance.onerror = (event) => {
-            console.log(`❌ Speech synthesis ERROR: ${event.error} for "${nextItem.text}"`);
+            console.error(`❌ Speech synthesis ERROR: ${event.error} for "${nextItem.text}"`);
             isProcessingAudioRef.current = false;
             setTimeout(() => processAudioQueue(), 10);
           };
 
-          // Start speaking immediately
-          console.log(`🎤 Calling speechSynthesis.speak() for: "${nextItem.text}"`);
           window.speechSynthesis.speak(utterance);
           
-          // Backup timeout in case speech synthesis doesn't fire events properly
-          setTimeout(() => {
-            if (isProcessingAudioRef.current) {
-              console.log(`⏰ Speech synthesis timeout backup for: "${nextItem.text}"`);
-              isProcessingAudioRef.current = false;
-              setTimeout(() => processAudioQueue(), 10);
-            }
-          }, 5000);
-          
-        }, 50); // Small delay after cancellation
+        }, 50);
         
       } else {
-        // Fallback if speech synthesis not available
-        console.log(`🔧 Speech synthesis NOT AVAILABLE, using console log: "${nextItem.text}"`);
         isProcessingAudioRef.current = false;
         setTimeout(() => processAudioQueue(), 10);
       }
     } else {
-      // Handle other audio types (actual AI responses)
-      console.log(`🎵 Non-speculative audio item processed`);
       isProcessingAudioRef.current = false;
       setTimeout(() => processAudioQueue(), 10);
     }
@@ -2616,35 +2252,23 @@ Remember: Create the perfect illusion of instant response while maintaining natu
     // Track the function call
     setIsProcessingFunction(true);
     
-    // For cart operations, also update the cart display optimistically
-    if (["add_drink_to_cart", "remove_drink_from_cart", "clear_cart"].includes(functionName)) {
-      console.log('🛒 Cart operation detected, will update display after completion');
-    }
-    
     // Enhanced message handling to clear speculative responses instantly when real audio arrives
     const checkForRealResponse = () => {
-      // If we detect any actual audio response, immediately clear speculative content
       if (isPlaying) {
-        console.log('🎵 Real audio detected, clearing speculative responses');
         if (speculativeTimeoutRef.current) {
           clearTimeout(speculativeTimeoutRef.current);
           speculativeTimeoutRef.current = null;
         }
-        // Remove speculative items from queue
         audioQueueRef.current = audioQueueRef.current.filter(item => item.type !== 'speculative');
-        
-        // Stop any ongoing speech synthesis
         if ('speechSynthesis' in window) {
           window.speechSynthesis.cancel();
         }
         isProcessingAudioRef.current = false;
       } else if (isProcessingFunction) {
-        // Keep checking for real responses while function is still processing
-        setTimeout(checkForRealResponse, 50); // Check more frequently
+        setTimeout(checkForRealResponse, 50);
       }
     };
     
-    // Start monitoring for real responses immediately
     setTimeout(checkForRealResponse, 50);
   };
 
@@ -2683,11 +2307,21 @@ Remember: Create the perfect illusion of instant response while maintaining natu
     }
   };
 
-  // updateCartDisplay function must remain here, it was accidentally removed.
+  // Debounce timer for cart updates
+  const cartUpdateTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // updateCartDisplay function - now uses direct WebSocket connection with debouncing
   const updateCartDisplay = async () => {
+    // Clear any pending update
+    if (cartUpdateTimeoutRef.current) {
+      clearTimeout(cartUpdateTimeoutRef.current);
+    }
+    
+    // Debounce the actual update
+    cartUpdateTimeoutRef.current = setTimeout(async () => {
     try {
-      // First try the direct API for immediate response
-      const directResponse = await fetch('/api/voice-cart-direct', {
+      // Get cart data from MCP server
+      const response = await fetch('/api/voice-cart-direct', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -2696,203 +2330,109 @@ Remember: Create the perfect illusion of instant response while maintaining natu
         })
       });
       
-      if (directResponse.ok) {
-        const directResult = await directResponse.json();
-        console.log('🛒 Direct cart data:', directResult);
+      if (response.ok) {
+        const result = await response.json();
         
-        if (directResult.success && directResult.cart) {
-          // Only broadcast to main page - no local state management
-          console.log('🚨 [DEBUG] About to broadcast cart update:', directResult.cart);
-          console.log('🚨 [DEBUG] Window object exists:', !!window);
-          console.log('🚨 [DEBUG] CustomEvent exists:', !!window.CustomEvent);
-          
-          const cartEvent = new CustomEvent('realtime-cart_update', {
-            detail: {
-              type: 'cart_update',
-              payload: {
-                items: directResult.cart,
-                total: directResult.total || 0
-              }
-            }
-          });
-          
-          console.log('🚨 [DEBUG] Created event:', cartEvent);
-          window.dispatchEvent(cartEvent);
-          console.log('📡 [Voice-Direct] Broadcasted cart update to main page:', directResult.cart.length, 'items');
-          
-          // Additional verification
-          setTimeout(() => {
-            console.log('🚨 [DEBUG] Checking if main page received event after 100ms...');
-          }, 100);
-          
-          return; // Success with direct API
-        }
-      }
-      
-      // Fallback to MCP API if direct API fails
-      const mcpResponse = await fetch('/api/voice-advanced', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          tool: 'cart_view',
-          parameters: { clientId: 'default' }
-        })
-      });
-      
-      if (mcpResponse.ok) {
-        const mcpResult = await mcpResponse.json();
-        console.log('🛒 MCP cart data:', mcpResult);
-        
-        // Handle MCP result formats
-        let cartText = '';
-        if (mcpResult.result && mcpResult.result.content && mcpResult.result.content[0]) {
-          cartText = mcpResult.result.content[0].text;
-        } else if (mcpResult.content && mcpResult.content[0]) {
-          cartText = mcpResult.content[0].text;
-        }
-        
-        if (cartText) {
-          const lines = cartText.split('\n');
-          const items = [];
-          let total = 0;
-          
-          // Check if cart is explicitly empty - broadcast empty cart to main page
-          if (cartText.toLowerCase().includes('empty') || cartText.toLowerCase().includes('no items')) {
-            window.dispatchEvent(new CustomEvent('realtime-cart_update', {
+        if (result.success && result.cart) {
+          // Try direct function call first, then fallback to custom event
+          if ((window as any).updateCartFromData) {
+            (window as any).updateCartFromData({
+              items: result.cart,
+              total: result.total || 0,
+              clientId: 'default'
+            }, 'voice-control');
+          } else {
+            // Trigger a custom event to notify the main component
+            window.dispatchEvent(new CustomEvent('cartUpdateRequested', {
               detail: {
-                type: 'cart_update',
-                payload: {
-                  items: [],
-                  total: 0
-                }
+                items: result.cart,
+                total: result.total || 0,
+                clientId: 'default'
               }
             }));
-            console.log('📡 [Voice] Broadcasted empty cart to main page');
-            return;
           }
-          
-          for (const line of lines) {
-            const itemMatch = line.match(/(\d+)x\s+(.+?)\s+-\s+\$(\d+\.\d+)/);
-            if (itemMatch) {
-              const [, quantity, name, subtotal] = itemMatch;
-              const price = parseFloat(subtotal) / parseInt(quantity);
-              items.push({
-                name: name.trim(),
-                quantity: parseInt(quantity),
-                price: price,
-                subtotal: parseFloat(subtotal),
-                category: 'Beverage'
-              });
-            }
-            const totalMatch = line.match(/Total:\s+\$(\d+\.\d+)/);
-            if (totalMatch) {
-              total = parseFloat(totalMatch[1]);
-            }
-          }
-          
-          // Only broadcast to main page - no local state management
-          window.dispatchEvent(new CustomEvent('realtime-cart_update', {
-            detail: {
-              type: 'cart_update',
-              payload: {
-                items: items,
-                total: total
-              }
-            }
-          }));
-          console.log('📡 [Voice] Broadcasted cart update to main page:', items.length, 'items, total:', total);
-        } else {
-          // No cart text found, cart is empty - broadcast empty cart to main page
-          window.dispatchEvent(new CustomEvent('realtime-cart_update', {
-            detail: {
-              type: 'cart_update',
-              payload: {
-                items: [],
-                total: 0
-              }
-            }
-          }));
-          console.log('📡 [Voice] Broadcasted empty cart to main page');
         }
       }
     } catch (error) {
-      console.error('Error updating cart display:', error);
-      // Don't clear cart on error, keep current state
+      console.error('🔌 [PREMIUM] Cart display update error:', error);
     }
+    }, 200); // 200ms debounce delay to reduce rerender frequency
   };
 
   return (
-    <div className="relative flex items-center justify-center">
+    <div className="flex justify-center items-center p-6">
       {/* Hidden audio elements for sound effects */}
       <audio ref={audioElementRef} style={{ display: 'none' }} />
       <audio ref={wakeAckAudioRef} preload="auto" style={{ display: 'none' }}>
         <source src="/chime.mp3" type="audio/mpeg" />
       </audio>
 
-      {/* Voice assistant toggle button - prominent design with high z-index */}
+      {/* Minimalist circular voice button with glossy design */}
       <button
         onClick={toggleListening}
-        className={`fixed top-4 right-4 z-50 group p-4 rounded-xl transition-all duration-300 touch-button no-select min-h-touch min-w-touch shadow-2xl ${
-          isListening || isWakeWordMode 
-            ? 'bg-red-600 text-white shadow-lg shadow-red-600/25 ring-2 ring-red-500/20 hover:bg-red-700' 
-            : 'bg-blue-600 text-white hover:bg-blue-700 shadow-lg shadow-blue-600/25'
-        } ${isProcessing ? 'animate-pulse' : ''}`}
         disabled={isProcessing}
+        className={`relative w-20 h-20 rounded-full transition-all duration-700 ease-out ${
+          isListening || isWakeWordMode 
+            ? 'bg-gradient-to-br from-orange-400 via-orange-500 to-orange-600 shadow-2xl shadow-orange-500/40 scale-110' 
+            : 'bg-gradient-to-br from-gray-50 via-gray-100 to-gray-200 hover:from-gray-100 hover:via-gray-200 hover:to-gray-300 shadow-lg hover:shadow-xl'
+        } ${isProcessing ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer hover:scale-105'}`}
+        style={{
+          backdropFilter: 'blur(20px)',
+          border: '1px solid rgba(255, 255, 255, 0.3)',
+          boxShadow: isListening || isWakeWordMode 
+            ? '0 20px 40px rgba(249, 115, 22, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.2)' 
+            : '0 10px 30px rgba(0, 0, 0, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.8)'
+        }}
         title={isListening || isWakeWordMode ? 'Stop Voice Assistant' : 'Start Voice Assistant'}
       >
-        {/* Subtle background glow for active state */}
-        {(isListening || isWakeWordMode) && (
-          <div className="absolute inset-0 rounded-xl bg-primary/10 animate-pulse"></div>
-        )}
+        {/* Glossy overlay for depth */}
+        <div className="absolute inset-0 rounded-full bg-gradient-to-br from-white/30 via-white/10 to-transparent pointer-events-none" />
         
-        {/* Voice icon with clear ON/OFF states */}
-        <div className="relative z-10 flex flex-col items-center">
+        {/* Central content */}
+        <div className="relative z-10 flex items-center justify-center h-full">
           {isListening || isWakeWordMode ? (
-            <>
-              <div className="flex items-center justify-center space-x-0.5 mb-1">
-                {/* Audio waveform visualization */}
-                <div className={`w-1 h-3 bg-current rounded-full ${isProcessing ? 'animate-pulse' : 'animate-bounce'} delay-0`}></div>
-                <div className={`w-1 h-5 bg-current rounded-full ${isProcessing ? 'animate-pulse' : 'animate-bounce'} delay-75`}></div>
-                <div className={`w-1 h-4 bg-current rounded-full ${isProcessing ? 'animate-pulse' : 'animate-bounce'} delay-150`}></div>
-                <div className={`w-1 h-3 bg-current rounded-full ${isProcessing ? 'animate-pulse' : 'animate-bounce'} delay-225`}></div>
-                <div className={`w-1 h-2 bg-current rounded-full ${isProcessing ? 'animate-pulse' : 'animate-bounce'} delay-300`}></div>
-              </div>
-              <span className="text-xs font-bold">STOP</span>
-            </>
+            // Smooth animated sound wave when active
+            <div className="flex items-center space-x-1">
+              {[1, 2, 3, 4, 5].map((i) => (
+                <div
+                  key={i}
+                  className="w-1 bg-white rounded-full animate-pulse"
+                  style={{
+                    height: isListening 
+                      ? `${Math.random() * 16 + 12}px` 
+                      : `${Math.random() * 12 + 8}px`,
+                    animationDelay: `${i * 0.2}s`,
+                    animationDuration: '1.5s',
+                    boxShadow: '0 2px 4px rgba(255, 255, 255, 0.3)'
+                  }}
+                />
+              ))}
+            </div>
           ) : (
-            <>
-              <svg 
-                className="w-6 h-6 group-hover:scale-110 transition-transform duration-200 mb-1" 
-                fill="currentColor" 
-                viewBox="0 0 24 24"
-              >
-                <path d="M12 2C13.1 2 14 2.9 14 4V12C14 13.1 13.1 14 12 14C10.9 14 10 13.1 10 12V4C10 2.9 10.9 2 12 2ZM19 10V12C19 15.3 16.3 18 13 18V20H18V22H6V20H11V18C7.7 18 5 15.3 5 12V10H7V12C7 14.2 8.8 16 11 16H13C15.2 16 17 14.2 17 12V10H19Z"/>
-              </svg>
-              <span className="text-xs font-bold">VOICE</span>
-            </>
+            // Elegant microphone icon when inactive
+            <svg 
+              className="w-8 h-8 text-gray-500 transition-all duration-500 group-hover:text-orange-500" 
+              fill="currentColor" 
+              viewBox="0 0 24 24"
+            >
+              <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
+              <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
+            </svg>
           )}
         </div>
-
-        {/* Status indicator dot - more subtle */}
+        
+        {/* Subtle ripple effect */}
+        <div className={`absolute inset-0 rounded-full transition-all duration-500 ${
+          isListening || isWakeWordMode 
+            ? 'bg-orange-500/20 scale-150 opacity-0' 
+            : 'bg-gray-500/20 scale-100 opacity-0'
+        }`} />
+        
+        {/* Status indicator - minimal dot */}
         {(isListening || isWakeWordMode) && (
-          <div className="absolute -top-1 -right-1 w-2 h-2 bg-green-500 rounded-full border border-white shadow-sm animate-pulse"></div>
+          <div className="absolute -top-1 -right-1 w-3 h-3 bg-white rounded-full border-2 border-orange-500 shadow-lg animate-pulse" />
         )}
       </button>
-
-      {/* Status text below button - refined typography */}
-      <div className="absolute -bottom-8 left-1/2 transform -translate-x-1/2 whitespace-nowrap">
-        <p className="text-xs font-medium text-gray-500 text-center">
-          {isWakeWordMode ? '' : 
-           isListening ? 'Listening...' : 
-           isProcessing ? 'Processing...' : 
-           ''}
-        </p>
-        {error && (
-          <p className="text-xs text-red-500 mt-1 text-center">
-            Connection Error
-          </p>
-        )}
-      </div>
     </div>
   );
 }

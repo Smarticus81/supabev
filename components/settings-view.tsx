@@ -92,7 +92,7 @@ export function SettingsView() {
 
   const openaiVoices = [
     { id: "nova", name: "Nova" },
-    { id: "alloy", name: "Alloy" },
+    { id: "shimmer", name: "shimmer" },
     { id: "echo", name: "Echo" },
     { id: "fable", name: "Fable" },
     { id: "onyx", name: "Onyx" },

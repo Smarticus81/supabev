@@ -4,6 +4,7 @@
 import postgres from 'postgres';
 import { eq, like, desc, sql, and, gte, lte } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/postgres-js';
+import { drinks, orders } from '../db/schema';
 
 // Ultra-fast in-memory cart storage for voice operations
 const cartStorage = new Map<string, any[]>();
@@ -31,6 +32,7 @@ class MCPDirect {
     try {
       switch (toolName) {
         case 'add_drink_to_cart':
+        case 'cart_add':
           return await this.cartAdd({
             clientId: params.clientId || 'default',
             drink_name: params.drink_name,
@@ -44,11 +46,13 @@ class MCPDirect {
           });
 
         case 'clear_cart':
+        case 'cart_clear':
           return this.cartClear({
             clientId: params.clientId || 'default'
           });
 
         case 'remove_drink_from_cart':
+        case 'cart_remove':
           return this.cartRemove({
             clientId: params.clientId || 'default',
             drink_name: params.drink_name,
@@ -56,6 +60,7 @@ class MCPDirect {
           });
 
         case 'process_order':
+        case 'cart_create_order':
           return await this.cartCreateOrder({
             clientId: params.clientId || 'default',
             customer_name: params.customer_name
@@ -99,16 +104,19 @@ class MCPDirect {
 
     try {
       // Verify drink exists and get price
-      const drinkResult = await this.db.execute(
-        sql`SELECT name, price FROM drinks WHERE LOWER(name) = LOWER(${drink_name}) LIMIT 1`
-      );
+      const drinkResult = await this.db.select({
+        name: drinks.name,
+        price: drinks.price
+      }).from(drinks).where(
+        eq(sql`LOWER(${drinks.name})`, drink_name.toLowerCase())
+      ).limit(1);
 
-      const drinkRows = drinkResult.rows || drinkResult || [];
-      if (drinkRows.length === 0) {
+      if (drinkResult.length === 0) {
         return { error: `Drink "${drink_name}" not found` };
       }
 
-      const drink = drinkRows[0];
+      const drink = drinkResult[0];
+      const priceInDollars = drink.price / 100; // Convert cents to dollars
 
       // Get or create cart for client
       if (!cartStorage.has(clientId)) {
@@ -132,7 +140,7 @@ class MCPDirect {
         const newItem = {
           drink_name: drink.name,
           quantity,
-          price: drink.price,
+          price: priceInDollars,
           serving_name
         };
         cart.push(newItem);
@@ -298,59 +306,65 @@ class MCPDirect {
       // Calculate totals
       let subtotal = 0;
       for (const item of items) {
-        const drinkResult = await this.db.execute(
-          sql`SELECT price FROM drinks WHERE LOWER(name) = LOWER(${item.drink_name})`
-        );
-        const price = parseFloat(drinkResult.rows[0].price);
-        subtotal += item.quantity * price;
+        const drinkResult = await this.db.select({
+          price: drinks.price
+        }).from(drinks).where(
+          eq(sql`LOWER(${drinks.name})`, item.drink_name.toLowerCase())
+        ).limit(1);
+        
+        const priceInCents = drinkResult[0].price;
+        subtotal += item.quantity * priceInCents;
       }
 
-      const tax = subtotal * 0.08; // 8% tax
+      const tax = Math.round(subtotal * 0.08); // 8% tax
       const total = subtotal + tax;
 
       // Prepare items for JSON storage
       const orderItems = [];
       for (const item of items) {
-        const drinkResult = await this.db.execute(
-          sql`SELECT price FROM drinks WHERE LOWER(name) = LOWER(${item.drink_name})`
-        );
-        const price = parseFloat(drinkResult.rows[0].price);
+        const drinkResult = await this.db.select({
+          price: drinks.price
+        }).from(drinks).where(
+          eq(sql`LOWER(${drinks.name})`, item.drink_name.toLowerCase())
+        ).limit(1);
+        
+        const priceInCents = drinkResult[0].price;
 
         orderItems.push({
           name: item.drink_name,
           quantity: item.quantity,
-          price: price,
-          total: price * item.quantity
+          price: priceInCents,
+          total: priceInCents * item.quantity
         });
       }
 
       // Create order in database
-      const orderResult = await this.db.execute(
-        sql`
-          INSERT INTO orders (
-            customer_id, subtotal, tax_amount, total, 
-            payment_method, payment_status, status,
-            order_number, items, created_at
-          ) 
-          VALUES (
-            null, ${subtotal}, ${tax}, ${total},
-            ${payment_method}, 'completed', 'completed',
-            'ORD-' || extract(epoch from now())::bigint, ${JSON.stringify(orderItems)}, now()
-          ) 
-          RETURNING id, order_number
-        `
-      );
+      const orderResult = await this.db.insert(orders).values({
+        customer_id: null,
+        subtotal: subtotal,
+        tax_amount: tax,
+        total: total,
+        payment_method: payment_method,
+        payment_status: 'completed',
+        status: 'completed',
+        order_number: `ORD-${Date.now()}`,
+        items: orderItems,
+        created_at: new Date()
+      }).returning({
+        id: orders.id,
+        order_number: orders.order_number
+      });
 
-      const orderId = orderResult.rows[0].id;
-      const orderNumber = orderResult.rows[0].order_number;
+      const orderId = orderResult[0].id;
+      const orderNumber = orderResult[0].order_number;
 
       return {
         success: true,
         order_id: orderId,
         order_number: orderNumber,
-        subtotal: subtotal.toFixed(2),
-        tax: tax.toFixed(2),
-        total: total.toFixed(2),
+        subtotal: (subtotal / 100).toFixed(2),
+        tax: (tax / 100).toFixed(2),
+        total: (total / 100).toFixed(2),
         payment_method: payment_method,
         message: `Order ${orderNumber} created successfully`
       };
@@ -371,52 +385,46 @@ class MCPDirect {
       let dbQuery;
 
       if (query && category) {
-        const searchPattern = `%${query.toLowerCase()}%`;
-        dbQuery = sql`
-          SELECT name, category, subcategory, price, inventory
-          FROM drinks 
-          WHERE (is_active IS NULL OR is_active = true)
-          AND LOWER(category) = LOWER(${category})
-          AND (LOWER(name) LIKE ${searchPattern} OR LOWER(subcategory) LIKE ${searchPattern})
-          ORDER BY category, name
-          LIMIT ${max_results}
-        `;
+        dbQuery = this.db.select().from(drinks).where(
+          and(
+            eq(drinks.is_active, true),
+            eq(sql`LOWER(${drinks.category})`, category.toLowerCase()),
+            sql`(LOWER(${drinks.name}) LIKE ${'%' + query.toLowerCase() + '%'} OR LOWER(${drinks.subcategory}) LIKE ${'%' + query.toLowerCase() + '%'})`
+          )
+        ).orderBy(drinks.category, drinks.name).limit(max_results);
       } else if (query) {
-        const searchPattern = `%${query.toLowerCase()}%`;
-        dbQuery = sql`
-          SELECT name, category, subcategory, price, inventory
-          FROM drinks 
-          WHERE (is_active IS NULL OR is_active = true)
-          AND (LOWER(name) LIKE ${searchPattern} OR LOWER(category) LIKE ${searchPattern} OR LOWER(subcategory) LIKE ${searchPattern})
-          ORDER BY category, name
-          LIMIT ${max_results}
-        `;
+        dbQuery = this.db.select().from(drinks).where(
+          and(
+            eq(drinks.is_active, true),
+            sql`(LOWER(${drinks.name}) LIKE ${'%' + query.toLowerCase() + '%'} OR LOWER(${drinks.category}) LIKE ${'%' + query.toLowerCase() + '%'} OR LOWER(${drinks.subcategory}) LIKE ${'%' + query.toLowerCase() + '%'})`
+          )
+        ).orderBy(drinks.category, drinks.name).limit(max_results);
       } else if (category) {
-        dbQuery = sql`
-          SELECT name, category, subcategory, price, inventory
-          FROM drinks 
-          WHERE (is_active IS NULL OR is_active = true)
-          AND LOWER(category) = LOWER(${category})
-          ORDER BY name
-          LIMIT ${max_results}
-        `;
+        dbQuery = this.db.select().from(drinks).where(
+          and(
+            eq(drinks.is_active, true),
+            eq(sql`LOWER(${drinks.category})`, category.toLowerCase())
+          )
+        ).orderBy(drinks.name).limit(max_results);
       } else {
-        dbQuery = sql`
-          SELECT name, category, subcategory, price, inventory
-          FROM drinks 
-          WHERE (is_active IS NULL OR is_active = true)
-          ORDER BY category, name
-          LIMIT ${max_results}
-        `;
+        dbQuery = this.db.select().from(drinks).where(
+          eq(drinks.is_active, true)
+        ).orderBy(drinks.category, drinks.name).limit(max_results);
       }
 
-      const result = await this.db.execute(dbQuery);
-      const drinks = result.rows || result || [];
+      const result = await dbQuery;
+      const formattedDrinks = result.map((drink: any) => ({
+        name: drink.name,
+        category: drink.category,
+        subcategory: drink.subcategory,
+        price: drink.price / 100, // Convert cents to dollars
+        inventory: drink.inventory
+      }));
 
       return {
         success: true,
-        drinks: drinks,
-        total_found: drinks.length,
+        drinks: formattedDrinks,
+        total_found: formattedDrinks.length,
         search_query: query,
         category_filter: category
       };
@@ -431,19 +439,22 @@ class MCPDirect {
 
   async viewMenu(params: any = {}) {
     try {
-      const result = await this.db.execute(
-        sql`SELECT name, category, subcategory, price, inventory
-            FROM drinks 
-            WHERE (is_active IS NULL OR is_active = true)
-            ORDER BY category, name`
-      );
+      const result = await this.db.select().from(drinks).where(
+        eq(drinks.is_active, true)
+      ).orderBy(drinks.category, drinks.name);
 
-      const drinks = result.rows || [];
+      const formattedDrinks = result.map((drink: any) => ({
+        name: drink.name,
+        category: drink.category,
+        subcategory: drink.subcategory,
+        price: drink.price / 100, // Convert cents to dollars
+        inventory: drink.inventory
+      }));
 
       return {
         success: true,
-        drinks,
-        message: `Menu contains ${drinks.length} drinks`
+        drinks: formattedDrinks,
+        message: `Menu contains ${formattedDrinks.length} drinks`
       };
     } catch (error) {
       console.error('❌ Error in viewMenu:', error);
@@ -459,31 +470,29 @@ class MCPDirect {
     }
 
     try {
-      const result = await this.db.execute(
-        sql`SELECT id, name, inventory, category, subcategory, price 
-            FROM drinks 
-            WHERE LOWER(name) = LOWER(${drink_name}) 
-            AND (is_active IS NULL OR is_active = true)
-            LIMIT 1`
-      );
+      const result = await this.db.select().from(drinks).where(
+        and(
+          eq(sql`LOWER(${drinks.name})`, drink_name.toLowerCase()),
+          eq(drinks.is_active, true)
+        )
+      ).limit(1);
 
-      const rows = result.rows || result || [];
-      if (rows.length === 0) {
+      if (result.length === 0) {
         return {
           success: false,
           error: `Drink "${drink_name}" not found in inventory`
         };
       }
 
-      const drink = rows[0];
+      const drink = result[0];
       return {
         success: true,
         id: drink.id,
         name: drink.name,
-        inventory: parseInt(drink.inventory) || 0,
+        inventory: drink.inventory || 0,
         category: drink.category,
         subcategory: drink.subcategory,
-        price: drink.price,
+        price: drink.price / 100,
         message: `Current inventory for ${drink.name}: ${drink.inventory} units`
       };
     } catch (error) {

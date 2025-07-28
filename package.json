@@ -7,6 +7,8 @@
     "dev": "next dev",
     "lint": "next lint",
     "start": "next start",
+    "start-all": "concurrently \"node scripts/premium-ws-server.js\" \"npm run dev\"",
+    "start-ws": "node scripts/premium-ws-server.js",
     "seed": "node scripts/seed.js",
     "mcp": "node scripts/mcp-server.js",
     "voice-server": "node server/voice-server.js",
@@ -34,7 +36,6 @@
     "perf:monitor": "node -e \"const {performanceMonitor} = require('./lib/performance-monitor'); console.log(performanceMonitor.getStats());\""
   },
   "dependencies": {
-
     "@hookform/resolvers": "^3.10.0",
     "@radix-ui/react-accordion": "1.2.2",
     "@radix-ui/react-alert-dialog": "1.1.4",
@@ -63,8 +64,8 @@
     "@radix-ui/react-toggle": "1.1.1",
     "@radix-ui/react-toggle-group": "1.1.1",
     "@radix-ui/react-tooltip": "1.1.6",
-
     "@supabase/supabase-js": "^2.52.1",
+    "@types/ws": "^8.18.1",
     "@vapi-ai/web": "^2.3.8",
     "autoprefixer": "^10.4.20",
     "class-variance-authority": "^0.7.1",
@@ -79,12 +80,10 @@
     "embla-carousel-react": "8.5.1",
     "express": "^4.19.2",
     "fast-levenshtein": "^3.0.0",
-
     "input-otp": "1.4.1",
     "lucide-react": "^0.454.0",
     "next": "15.2.4",
     "next-themes": "^0.4.4",
-
     "openai": "^5.9.0",
     "postgres": "^3.4.7",
     "react": "^19",
@@ -95,19 +94,17 @@
     "recharts": "2.15.0",
     "socket.io": "^4.8.1",
     "sonner": "^1.7.1",
-
     "tailwind-merge": "^2.5.5",
     "tailwindcss-animate": "^1.0.7",
     "tsx": "^4.20.3",
     "vaul": "^0.9.6",
-    "ws": "^8.17.1",
+    "ws": "^8.18.3",
     "zod": "^3.24.1"
   },
   "devDependencies": {
     "@types/node": "^22",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-
     "concurrently": "^9.2.0",
     "postcss": "^8.5",
     "tailwindcss": "^3.4.17",

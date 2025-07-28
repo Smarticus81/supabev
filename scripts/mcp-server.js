@@ -1086,7 +1086,7 @@ class MCPServer {
             // Return optimized OpenAI configuration for fast, unlimited responses
             const finalConfig = { 
                 tts_provider: 'openai', 
-                tts_voice: 'alloy',
+                tts_voice: 'shimmer',
                 rate: 1.4, // Faster speech speed (1.4x normal)
                 temperature: 0.6, // Minimum required by OpenAI Realtime API
                 vad_threshold: 0.3, // More sensitive voice detection

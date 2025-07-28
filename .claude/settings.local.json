@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(tsx:*)",
-      "Bash(node:*)"
+      "Bash(node:*)",
+      "Bash(npm run build:*)"
     ],
     "deny": []
   }

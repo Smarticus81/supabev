@@ -32,7 +32,7 @@ const createDefaultClientState = () => ({
   },
   voiceConfig: {
     provider: 'openai',
-    voice: 'alloy',
+    voice: 'shimmer',
     temperature: 0.7,
     rate: 1.0
   }

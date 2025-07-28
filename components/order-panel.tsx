@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button"
 import { Minus, Plus, X, RefreshCw } from "lucide-react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { useState } from "react"
+import { VoiceControlButton } from "./voice-control-button"
 
 interface OrderItem {
   id: string
@@ -67,6 +68,16 @@ export default function OrderPanel({ orders, removeFromOrder, updateQuantity, to
               </svg>
             </div>
             <p className="text-xs text-gray-400">Empty</p>
+          </div>
+        </div>
+
+        {/* Voice Control Button - Always visible at bottom */}
+        <div className="p-3 border-t border-gray-100 bg-gray-50/50">
+          <div className="relative bg-white border border-gray-200 rounded-xl p-3 shadow-sm hover:shadow-md transition-all duration-300">
+            <div className="absolute inset-0 bg-gradient-to-r from-orange-400 to-orange-500 rounded-xl opacity-5"></div>
+            <div className="relative z-10">
+              <VoiceControlButton />
+            </div>
           </div>
         </div>
       </div>
@@ -167,11 +178,19 @@ export default function OrderPanel({ orders, removeFromOrder, updateQuantity, to
         {/* Compact checkout button */}
         <Button
           onClick={onCompleteOrder}
-          className="w-full bg-gray-900 hover:bg-gray-800 text-white h-10 text-sm font-medium rounded-lg"
+          className="w-full bg-gray-900 hover:bg-gray-800 text-white h-10 text-sm font-medium rounded-lg mb-3"
           disabled={orders.length === 0}
         >
           Complete Order
         </Button>
+        
+        {/* Voice Control Button - Beautifully integrated at bottom */}
+        <div className="relative bg-white border border-gray-200 rounded-xl p-3 shadow-sm hover:shadow-md transition-all duration-300">
+          <div className="absolute inset-0 bg-gradient-to-r from-orange-400 to-orange-500 rounded-xl opacity-5"></div>
+          <div className="relative z-10">
+            <VoiceControlButton />
+          </div>
+        </div>
       </div>
     </div>
   )

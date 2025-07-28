@@ -13,7 +13,7 @@ export async function GET(request: Request) {
     if (provider === 'openai') {
       // OpenAI Realtime API voices
       voices = [
-        { id: 'alloy', name: 'Alloy (Natural)' },
+        { id: 'shimmer', name: 'shimmer (Natural)' },
         { id: 'echo', name: 'Echo (Professional)' },
         { id: 'fable', name: 'Fable (Storytelling)' },
         { id: 'onyx', name: 'Onyx (Deep)' },
